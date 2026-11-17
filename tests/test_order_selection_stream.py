@@ -1,16 +1,17 @@
-"""Exercise order interruption and resumption through the public SSE transport."""
+"""Exercise order interruption, resumption, and stream race error handling over SSE."""
 
 from dataclasses import replace
 import json
 
+import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from app.api import create_api_router
 from app.config import Settings
 from app.repositories.conversations import ConversationRepository
+from app.repositories.orders import OrderNotFound
 from tests.workflow_fakes import InMemoryWorkflow, KeywordModel, LabelledSearch, turn
-
 
 USER_ID = "00000000-0000-0000-0000-000000000001"
 
@@ -48,28 +49,40 @@ async def test_missing_order_card_reaches_browser_and_click_resumes_workflow(mon
     monkeypatch.setattr(service, "prepare_turn", prepare)
     monkeypatch.setattr(ConversationRepository, "get_owned", get_owned)
     settings = Settings(
-        chat_base_url="http://localhost:11434/v1", openai_model="fake",
-        openai_api_key="fake", database_url="mysql+asyncmy://user:pass@localhost/db",
+        chat_base_url="http://localhost:11434/v1",
+        openai_model="fake",
+        openai_api_key="fake",
+        database_url="mysql+asyncmy://user:pass@localhost/db",
     )
     app = FastAPI()
     app.include_router(create_api_router(settings, model, OwnedSession, service, None))
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post(
-            "/v1/chat/stream", json={"user_id": USER_ID, "message": "这个能退吗"},
+            "/v1/chat/stream",
+            json={"user_id": USER_ID, "message": "这个能退吗"},
         )
         initial = events(response)
         assert initial[0] == ("conversation", {"conversation_id": 1})
         assert initial[-1][0] == "order_selection"
         selection = initial[-1][1]
         assert "演示订单" in selection["message"]
-        assert [item["order_id"] for item in selection["orders"]] == ["1001", "1002", "1003", "1004"]
+        assert [item["order_id"] for item in selection["orders"]] == [
+            "1001",
+            "1002",
+            "1003",
+            "1004",
+        ]
         assert model.agent_calls == 0
         assert await service.pending_order(USER_ID, 1) is not None
 
         response = await client.post(
             "/v1/conversations/1/select-order",
-            json={"user_id": USER_ID, "message_id": selection["message_id"], "order_id": "1001"},
+            json={
+                "user_id": USER_ID,
+                "message_id": selection["message_id"],
+                "order_id": "1001",
+            },
         )
         resumed = events(response)
         assert resumed[-1][0] == "done"
@@ -77,3 +90,51 @@ async def test_missing_order_card_reaches_browser_and_click_resumes_workflow(mon
         assert [item["name"] for item in resumed[-1][1]["tool_trace"]] == ["query_order"]
         assert model.agent_calls == 1 and search.queries
         assert await service.pending_order(USER_ID, 1) is None
+
+
+@pytest.mark.parametrize(
+    ("raised", "expected_code"),
+    [
+        (ValueError("no matching pending order"), "order_selection_not_pending"),
+        (OrderNotFound("missing"), "order_not_found"),
+    ],
+)
+async def test_select_order_stream_converts_race_errors_to_sse_error_events(
+    monkeypatch, raised, expected_code
+):
+    model, search = KeywordModel(), LabelledSearch()
+    service = InMemoryWorkflow(model, search)
+
+    async def get_owned(self, conversation_id, user_id):
+        return object()
+
+    async def fake_pending(user_id, conversation_id):
+        return {"message_id": 5, "orders": [{"order_id": "1001"}]}
+
+    async def failing_resume(user_id, conversation_id, order_id, message_id):
+        raise raised
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(ConversationRepository, "get_owned", get_owned)
+    monkeypatch.setattr(service, "pending_order", fake_pending)
+    monkeypatch.setattr(service, "resume_order", failing_resume)
+    settings = Settings(
+        chat_base_url="http://localhost:11434/v1",
+        openai_model="fake",
+        openai_api_key="fake",
+        database_url="mysql+asyncmy://user:pass@localhost/db",
+    )
+    app = FastAPI()
+    app.include_router(create_api_router(settings, model, OwnedSession, service, None))
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/conversations/1/select-order",
+            json={"user_id": USER_ID, "message_id": 5, "order_id": "1001"},
+        )
+
+    parsed = events(response)
+    assert parsed == [
+        ("error", {"code": expected_code, "message": parsed[0][1]["message"]})
+    ]
+    assert parsed[0][1]["message"]

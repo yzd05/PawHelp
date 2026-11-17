@@ -21,6 +21,12 @@ body.console-page { margin: 0; padding-left: 248px; background: var(--bg); color
 .console-page .console-sidebar-bottom a { font-weight: 700; text-decoration: none; }
 .console-page .console-sidebar-bottom a:hover { text-decoration: underline; }
 .console-page .console-sidebar-bottom small { padding: 8px 10px; border: 2px dashed var(--ink); color: var(--muted); font-size: 12px; }
+.console-page .console-token-button { min-height: 34px; margin: 0; padding: 6px 10px; font-size: 12px; background: var(--surface); }
+.console-page .console-token-dialog { width: min(420px, calc(100vw - 32px)); padding: 20px; background: var(--surface); }
+.console-page .console-token-dialog form { display: grid; gap: 12px; }
+.console-page .console-token-dialog h2 { margin: 0; }
+.console-page .console-token-dialog input { width: 100%; }
+.console-page .console-token-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
 
 /* Page frame */
 .console-page main, .console-page .shell { width: min(1280px, calc(100% - 64px)); margin: 32px auto 48px; padding: 0; }

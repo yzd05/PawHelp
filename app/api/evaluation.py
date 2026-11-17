@@ -1,13 +1,21 @@
 """RAG evaluation and human review endpoints; separate from application assembly."""
+
 import asyncio
 from collections.abc import Awaitable, Callable
 import json
 from pathlib import Path
-from fastapi import APIRouter, HTTPException
+
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
+
+from app.api.auth import authorize, bind_admin_settings
 from app.database.models import FaithCase
 from app.evaluation.runtime import DEFAULT_EVAL_CASES_PATH, report_dataset_alignment
-from app.repositories.quality import FaithCaseConflict, FaithCaseNotFound, QualityRepository
+from app.repositories.quality import (
+    FaithCaseConflict,
+    FaithCaseNotFound,
+    QualityRepository,
+)
 from app.schemas import FaithCaseReviewRequest, RagEvalRunRequest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -31,6 +39,20 @@ def _read_rag_eval_report() -> dict[str, object]:
         raise HTTPException(
             status_code=503, detail={"code": "rag_eval_report_unavailable"}
         ) from error
+
+
+def _load_aligned_rag_eval_report() -> dict[str, object]:
+    payload = dict(_read_rag_eval_report())
+    try:
+        payload["dataset_alignment"] = report_dataset_alignment(
+            payload, RAG_EVAL_CASES_PATH
+        )
+    except (OSError, ValueError):
+        payload["dataset_alignment"] = {
+            "status": "unverified",
+            "changed_cases": 0,
+        }
+    return payload
 
 
 def _flagged_faith_rows(report: dict[str, object]) -> dict[str, dict[str, object]]:
@@ -66,26 +88,27 @@ def _faith_review_state(
     }
 
 
-def evaluation_router(active_session_factory, pipeline, rag_eval_lock: asyncio.Lock, active_rag_eval_runner: RagEvalRunner) -> APIRouter:
-    router = APIRouter(tags=["evaluation"])
+def evaluation_router(
+    active_session_factory,
+    pipeline,
+    rag_eval_lock: asyncio.Lock,
+    active_rag_eval_runner: RagEvalRunner,
+    settings: object | None = None,
+) -> APIRouter:
+    router = APIRouter(
+        tags=["evaluation"],
+        dependencies=[Depends(bind_admin_settings(settings)), Depends(authorize)],
+    )
 
     @router.get("/v1/rag-eval/report", response_class=JSONResponse)
     async def rag_eval_report() -> JSONResponse:
-        payload = _read_rag_eval_report()
-        try:
-            payload["dataset_alignment"] = report_dataset_alignment(
-                payload, RAG_EVAL_CASES_PATH
-            )
-        except (OSError, ValueError):
-            payload["dataset_alignment"] = {
-                "status": "unverified",
-                "changed_cases": 0,
-            }
+        payload = await asyncio.to_thread(_load_aligned_rag_eval_report)
         return JSONResponse(payload, headers={"Cache-Control": "no-store"})
 
     @router.get("/v1/rag-eval/faith-cases", response_class=JSONResponse)
     async def rag_eval_faith_cases() -> JSONResponse:
-        flagged = _flagged_faith_rows(_read_rag_eval_report())
+        report = await asyncio.to_thread(_read_rag_eval_report)
+        flagged = _flagged_faith_rows(report)
         try:
             async with active_session_factory() as session:
                 rows = await QualityRepository(session).list_faith_cases(list(flagged))
@@ -111,7 +134,8 @@ def evaluation_router(active_session_factory, pipeline, rag_eval_lock: asyncio.L
         if rag_eval_lock.locked():
             raise HTTPException(status_code=409, detail={"code": "rag_eval_running"})
         async with rag_eval_lock:
-            snapshot = _flagged_faith_rows(_read_rag_eval_report()).get(eval_id)
+            report = await asyncio.to_thread(_read_rag_eval_report)
+            snapshot = _flagged_faith_rows(report).get(eval_id)
             if snapshot is None:
                 raise HTTPException(
                     status_code=404, detail={"code": "faith_case_not_in_report"}
@@ -126,7 +150,9 @@ def evaluation_router(active_session_factory, pipeline, rag_eval_lock: asyncio.L
                         expected_status=request.expected_status,
                         expected_resolution=request.expected_resolution,
                         status=request.status,
-                        resolution=(request.resolution if request.status != "未解决" else None),
+                        resolution=(
+                            request.resolution if request.status != "未解决" else None
+                        ),
                     )
                     state = _faith_review_state(row, snapshot)
             except FaithCaseNotFound as error:

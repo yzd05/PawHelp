@@ -7,6 +7,7 @@ from app.main import create_app
 from tests.fakes import FakeCombinedModel
 
 DATABASE_URL = "mysql+asyncmy://pawhelp:pawhelp@127.0.0.1:3306/pawhelp"
+LOCAL_ADMIN_HEADERS = {"X-PawHelp-Local-Admin": "1"}
 
 
 class NeverCalledSessionFactory:
@@ -31,6 +32,28 @@ def make_app(model: object):
     )
 
 
+def admin_client(model: object) -> TestClient:
+    return TestClient(
+        make_app(model),
+        base_url="http://localhost:8000",
+        client=("127.0.0.1", 50000),
+        headers=LOCAL_ADMIN_HEADERS,
+    )
+
+
+def test_extraction_endpoint_requires_admin_authorization() -> None:
+    model = FakeCombinedModel()
+    with TestClient(make_app(model)) as client:
+        response = client.post(
+            "/v1/after-sales/extract",
+            json={"description": "买错了，想原路退款"},
+        )
+
+    assert response.status_code == 503
+    assert model.structured_runnable is not None
+    assert model.structured_runnable.seen_messages == ()
+
+
 def test_extraction_endpoint_returns_the_exact_public_schema() -> None:
     model = FakeCombinedModel(
         structured_result={
@@ -40,7 +63,7 @@ def test_extraction_endpoint_returns_the_exact_public_schema() -> None:
         }
     )
 
-    with TestClient(make_app(model)) as client:
+    with admin_client(model) as client:
         response = client.post(
             "/v1/after-sales/extract",
             json={"description": "买错了，想原路退款"},
@@ -57,7 +80,7 @@ def test_extraction_endpoint_returns_the_exact_public_schema() -> None:
 def test_extraction_endpoint_hides_upstream_error_details() -> None:
     model = FakeCombinedModel(structured_error=RuntimeError("secret body"))
 
-    with TestClient(make_app(model)) as client:
+    with admin_client(model) as client:
         response = client.post(
             "/v1/after-sales/extract",
             json={"description": "退款"},
@@ -74,7 +97,7 @@ def test_extraction_endpoint_hides_upstream_error_details() -> None:
 
 
 def test_extraction_endpoint_rejects_an_empty_description() -> None:
-    with TestClient(make_app(FakeCombinedModel())) as client:
+    with admin_client(FakeCombinedModel()) as client:
         response = client.post("/v1/after-sales/extract", json={"description": "  "})
 
     assert response.status_code == 422

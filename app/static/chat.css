@@ -250,6 +250,8 @@ body { overflow: hidden; }
 .composer-hint { margin: 10px 2px 0; color: var(--muted); font-size: 12px; text-align: center; }
 #contextCompressionStatus { margin: 0 0 10px; padding: 6px 10px; border: 2px dashed var(--ink); background: var(--amber-soft); font-size: 13px; line-height: 1.5; }
 #contextCompressionStatus span { color: var(--muted); }
+.init-warning { margin: 0; padding: 16px; border: 2px solid #a42d30; background: #fff2dd; position: relative; z-index: 10; }
+.ticket-preview-description { white-space: pre-wrap; }
 
 @keyframes appear { from { opacity: 0; } to { opacity: 1; } }
 @keyframes blink { 50% { opacity: 0; } }

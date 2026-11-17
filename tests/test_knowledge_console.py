@@ -197,8 +197,15 @@ def test_knowledge_console_page_and_complete_api_workflow() -> None:
         knowledge_admin_service=service,  # type: ignore[arg-type]
     )
 
-    with TestClient(app) as client:
+    with TestClient(
+        app,
+        base_url="http://localhost:8000",
+        client=("127.0.0.1", 50000),
+        headers={"X-PawHelp-Local-Admin": "1"},
+    ) as client:
         page = client.get("/kb")
+        kb_css = client.get("/static/kb.css")
+        kb_js = client.get("/static/kb.js")
         materials = client.get("/v1/knowledge/materials")
         preview = client.post(
             "/v1/knowledge/preview", json={"path": "policies/refund.md"}
@@ -246,6 +253,14 @@ def test_knowledge_console_page_and_complete_api_workflow() -> None:
     assert page.status_code == 200
     assert page.headers["cache-control"] == "no-store"
     assert page.content == KNOWLEDGE_PAGE_PATH.read_bytes()
+    assert "<style>" not in page.text
+    assert "<script>" not in page.text
+    assert '/static/kb.css' in page.text
+    assert '/static/operations-base.js' in page.text
+    assert '/static/kb.js' in page.text
+    assert kb_css.status_code == 200
+    assert kb_js.status_code == 200
+    assert "adminHeaders" in kb_js.text
     assert "知识库工作台" in page.text
     assert "切块预览" in page.text
     assert "重建离线库" in page.text
@@ -455,7 +470,12 @@ def test_manual_entry_contradicting_a_document_is_refused_before_any_write(
                      session_factory=UnusedSessionFactory(),  # type: ignore[arg-type]
                      knowledge_admin_service=service)
 
-    with TestClient(app) as client:
+    with TestClient(
+        app,
+        base_url="http://localhost:8000",
+        client=("127.0.0.1", 50000),
+        headers={"X-PawHelp-Local-Admin": "1"},
+    ) as client:
         response = client.post("/v1/knowledge/chunks", json={
             "category": "配送服务", "questions": "邮费是多少", "answer": "没有固定的邮费金额，以结算页为准。"})
 

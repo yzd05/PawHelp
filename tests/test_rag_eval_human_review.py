@@ -10,6 +10,8 @@ from app.config import Settings
 from app.main import RAG_EVAL_PAGE_PATH, create_app
 from tests.fakes import FakeChatModel
 
+LOCAL_ADMIN_HEADERS = {"X-PawHelp-Local-Admin": "1"}
+
 
 class _Result:
     def __init__(self, rows: list[SimpleNamespace]) -> None:
@@ -62,23 +64,42 @@ def _app(session: _Session):
     )
 
 
+def _admin_client(session: _Session) -> TestClient:
+    return TestClient(
+        _app(session),
+        base_url="http://localhost:8000",
+        client=("127.0.0.1", 50000),
+        headers=LOCAL_ADMIN_HEADERS,
+    )
+
+
 def test_only_flagged_production_answer_can_be_reviewed(monkeypatch) -> None:
     snapshot = {
-        "case_id": "A17", "strategy": "hybrid_rerank", "faithful": False,
-        "answer": "有争议的答案", "faithfulness_reason": "引用不足",
+        "case_id": "A17",
+        "strategy": "hybrid_rerank",
+        "faithful": False,
+        "answer": "有争议的答案",
+        "faithfulness_reason": "引用不足",
     }
-    report = {"cases": [
-        snapshot,
-        {"case_id": "A18", "strategy": "hybrid_rerank", "faithful": True},
-        {"case_id": "A19", "strategy": "dense", "faithful": False},
-    ]}
+    report = {
+        "cases": [
+            snapshot,
+            {"case_id": "A18", "strategy": "hybrid_rerank", "faithful": True},
+            {"case_id": "A19", "strategy": "dense", "faithful": False},
+        ]
+    }
     monkeypatch.setattr(evaluation_module, "_read_rag_eval_report", lambda: report)
     row = SimpleNamespace(
-        eval_id="A17", answer="有争议的答案", reason="引用不足",
-        status="未解决", resolution=None, resolved_at=None, seen_count=2,
+        eval_id="A17",
+        answer="有争议的答案",
+        reason="引用不足",
+        status="未解决",
+        resolution=None,
+        resolved_at=None,
+        seen_count=2,
     )
     session = _Session(row)
-    with TestClient(_app(session)) as client:
+    with _admin_client(session) as client:
         listing = client.get("/v1/rag-eval/faith-cases")
         assert listing.status_code == 200
         assert list(listing.json()["cases"]) == ["A17"]
@@ -86,8 +107,10 @@ def test_only_flagged_production_answer_can_be_reviewed(monkeypatch) -> None:
 
         url = "/v1/rag-eval/faith-cases/A17/status"
         request = {
-            "status": "无需解决", "resolution": "  模型把有据的提醒误判为编造  ",
-            "expected_seen_count": 2, "expected_status": "未解决",
+            "status": "无需解决",
+            "resolution": "  模型把有据的提醒误判为编造  ",
+            "expected_seen_count": 2,
+            "expected_status": "未解决",
             "expected_resolution": None,
         }
         assert client.post(url, json={**request, "resolution": "  "}).status_code == 400
@@ -102,11 +125,16 @@ def test_only_flagged_production_answer_can_be_reviewed(monkeypatch) -> None:
         assert report["cases"][0]["faithful"] is False
 
         assert client.post(url, json=request).status_code == 409
-        reopened = client.post(url, json={
-            **request, "status": "未解决", "resolution": None,
-            "expected_status": "无需解决",
-            "expected_resolution": "模型把有据的提醒误判为编造",
-        })
+        reopened = client.post(
+            url,
+            json={
+                **request,
+                "status": "未解决",
+                "resolution": None,
+                "expected_status": "无需解决",
+                "expected_resolution": "模型把有据的提醒误判为编造",
+            },
+        )
         assert reopened.status_code == 200
         assert reopened.json()["resolution"] is None
         assert reopened.json()["resolved_at"] is None
@@ -114,20 +142,30 @@ def test_only_flagged_production_answer_can_be_reviewed(monkeypatch) -> None:
 
 def test_changed_report_and_unavailable_database_are_read_only(monkeypatch) -> None:
     snapshot = {
-        "case_id": "A17", "strategy": "hybrid_rerank", "faithful": False,
-        "answer": "新答案", "faithfulness_reason": "新理由",
+        "case_id": "A17",
+        "strategy": "hybrid_rerank",
+        "faithful": False,
+        "answer": "新答案",
+        "faithfulness_reason": "新理由",
     }
     monkeypatch.setattr(evaluation_module, "_read_rag_eval_report", lambda: {"cases": [snapshot]})
     row = SimpleNamespace(
-        eval_id="A17", answer="旧答案", reason="旧理由", status="未解决",
-        resolution=None, resolved_at=None, seen_count=1,
+        eval_id="A17",
+        answer="旧答案",
+        reason="旧理由",
+        status="未解决",
+        resolution=None,
+        resolved_at=None,
+        seen_count=1,
     )
     session = _Session(row)
     request = {
-        "status": "已解决", "resolution": "已经修复知识库",
-        "expected_seen_count": 1, "expected_status": "未解决",
+        "status": "已解决",
+        "resolution": "已经修复知识库",
+        "expected_seen_count": 1,
+        "expected_status": "未解决",
     }
-    with TestClient(_app(session)) as client:
+    with _admin_client(session) as client:
         assert client.get("/v1/rag-eval/faith-cases").json()["cases"]["A17"]["available"] is False
         assert client.post("/v1/rag-eval/faith-cases/A17/status", json=request).status_code == 409
         session.fail = True
@@ -136,10 +174,53 @@ def test_changed_report_and_unavailable_database_are_read_only(monkeypatch) -> N
         assert row.status == "未解决"
 
 
-def test_page_keeps_model_findings_separate_from_human_decisions() -> None:
-    page = RAG_EVAL_PAGE_PATH.read_text(encoding="utf-8")
-    assert 'if (row.faithful === false) body.appendChild(faithReviewBox(row));' in page
-    assert 'if (status !== "未解决" && !resolution)' in page
-    assert 'expected_resolution: review.resolution' in page
-    assert "原始模型分数不变" in page
-    assert "已解决：问题已实际修复" in page
+def test_page_and_module_keep_model_findings_separate_from_human_decisions(monkeypatch) -> None:
+    snapshot = {
+        "case_id": "A17",
+        "strategy": "hybrid_rerank",
+        "faithful": False,
+        "answer": "有争议的答案",
+        "faithfulness_reason": "引用不足",
+    }
+    report = {"strategies": {"hybrid_rerank": {"faithfulness": 0.5}}, "cases": [snapshot]}
+    monkeypatch.setattr(evaluation_module, "_read_rag_eval_report", lambda: report)
+    monkeypatch.setattr(
+        evaluation_module,
+        "report_dataset_alignment",
+        lambda payload, path: {"status": "current", "changed_cases": 0},
+    )
+    row = SimpleNamespace(
+        eval_id="A17",
+        answer="有争议的答案",
+        reason="引用不足",
+        status="未解决",
+        resolution=None,
+        resolved_at=None,
+        seen_count=1,
+    )
+    session = _Session(row)
+    with _admin_client(session) as client:
+        page = client.get("/rag-eval")
+        script = client.get("/static/rag-eval.js")
+        saved = client.post(
+            "/v1/rag-eval/faith-cases/A17/status",
+            json={
+                "status": "已解决",
+                "resolution": "已修订售后手册对应章节",
+                "expected_seen_count": 1,
+                "expected_status": "未解决",
+                "expected_resolution": None,
+            },
+        )
+        served_report = client.get("/v1/rag-eval/report")
+
+    assert page.status_code == 200
+    assert page.content == RAG_EVAL_PAGE_PATH.read_bytes()
+    assert "原始模型分数不变" in page.text
+    assert script.status_code == 200
+    assert "已解决：问题已实际修复" in script.text
+    assert "/v1/rag-eval/faith-cases/" in script.text
+    assert saved.status_code == 200
+    assert served_report.status_code == 200
+    assert served_report.json()["strategies"]["hybrid_rerank"]["faithfulness"] == 0.5
+    assert served_report.json()["cases"][0]["faithful"] is False

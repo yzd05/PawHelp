@@ -121,13 +121,78 @@ def test_supplied_session_factory_does_not_create_or_dispose_an_engine(
     assert session_factory.calls == 0
 
 
-def test_uvicorn_start_up_does_not_import_sentence_transformers(tmp_path) -> None:
-    # langchain_text_splitters' package import pulls in sentence-transformers (~16s on start-up).
-    code = "import sys, app.main; sys.exit('sentence_transformers' in sys.modules)"
-    # An empty working directory has no .env, as in CI; the fake settings stand in for it.
-    env = {**os.environ, "PYTHONPATH": str(Path(__file__).parents[1]), "CHAT_BASE_URL": "http://localhost/v1",
-           "OPENAI_MODEL": "fake", "OPENAI_API_KEY": "fake", "DATABASE_URL": "mysql+asyncmy://unused"}
-    assert subprocess.run([sys.executable, "-c", code], cwd=tmp_path, env=env).returncode == 0
+def test_uvicorn_start_up_does_not_import_sentence_transformers_or_instantiate_app(tmp_path) -> None:
+    # Importing app.main mustneither pull in sentence-transformers nor require .env / DB credentials.
+    code = (
+        "import sys, app.main; "
+        "assert app.main.app.is_initialized is False; "
+        "sys.exit('sentence_transformers' in sys.modules)"
+    )
+    clean_env = {
+        k: v
+        for k, v in os.environ.items()
+        if k not in {"CHAT_BASE_URL", "OPENAI_MODEL", "OPENAI_API_KEY", "DATABASE_URL"}
+    }
+    clean_env["PYTHONPATH"] = str(Path(__file__).parents[1])
+    assert subprocess.run([sys.executable, "-c", code], cwd=tmp_path, env=clean_env).returncode == 0
+
+
+def test_lazy_asgi_app_serves_requests_on_demand(monkeypatch) -> None:
+    built = 0
+
+    def build_fake_app() -> FastAPI:
+        nonlocal built
+        built += 1
+        return create_app(
+            settings=make_settings(),
+            model=NeverCalledModel(),
+            session_factory=NeverCalledSessionFactory(),
+        )
+
+    lazy = main_module.LazyASGIApp(build_fake_app)
+    assert lazy.is_initialized is False
+    assert built == 0
+
+    with TestClient(lazy) as client:
+        assert client.get("/health").json() == {"status": "ok"}
+
+    assert lazy.is_initialized is True
+    assert built == 1
+
+
+def test_lifespan_shutdown_awaits_cancelled_warmup_and_releases_vector_store(monkeypatch) -> None:
+    closed_clients: list[str] = []
+    warmup_cancelled = False
+
+    async def hanging_warmup(embedder, reranker) -> None:
+        nonlocal warmup_cancelled
+        try:
+            await asyncio.sleep(30)
+        except asyncio.CancelledError:
+            warmup_cancelled = True
+            raise
+
+    class FakeMilvusClient:
+        def close(self) -> None:
+            closed_clients.append("closed")
+
+    import asyncio
+
+    monkeypatch.setattr(main_module, "warm_knowledge_models", hanging_warmup)
+    application = create_app(
+        settings=make_settings(),
+        model=NeverCalledModel(),
+        session_factory=NeverCalledSessionFactory(),
+        preload_models=True,
+    )
+    application.state.vector_store._client = FakeMilvusClient()
+
+    with TestClient(application) as client:
+        assert client.get("/health").json() == {"status": "ok", "knowledge_models": "loading"}
+
+    assert warmup_cancelled is True
+    assert closed_clients == ["closed"]
+    assert application.state.vector_store._client is None
 
 
 @pytest.mark.parametrize("fails", [False, True])

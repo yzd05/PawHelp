@@ -4,7 +4,15 @@ from enum import Enum
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, PositiveInt, StrictBool, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PositiveInt,
+    StrictBool,
+    field_validator,
+    model_validator,
+)
 
 
 class ChatRequest(BaseModel):
@@ -155,7 +163,12 @@ class ExtractionRequest(BaseModel):
 
 KnowledgeContentType = Literal["faq", "policy", "manual", "conversation"]
 ManualKnowledgeContentType = Literal["faq", "policy", "manual"]
-VectorizeStatus = Literal["pending", "done"]
+VectorizeStatus = Literal["pending", "done", "failed", "deleting"]
+
+MAX_KNOWLEDGE_CATEGORY_BYTES = 1_000
+MAX_KNOWLEDGE_SECTION_PATH_BYTES = 2_000
+MAX_KNOWLEDGE_BODY_BYTES = 60_000
+MAX_REVIEW_ANSWER_BYTES = 30_000
 
 
 class KnowledgeMaterial(BaseModel):
@@ -256,9 +269,65 @@ class ManualKnowledgeRequest(BaseModel):
             raise ValueError("knowledge text must not be empty")
         return normalized
 
+    @field_validator("category")
+    @classmethod
+    def validate_category_utf8_bytes(cls, value: str) -> str:
+        if len(value.encode("utf-8")) > MAX_KNOWLEDGE_CATEGORY_BYTES:
+            raise ValueError(
+                f"category must not exceed {MAX_KNOWLEDGE_CATEGORY_BYTES} UTF-8 bytes"
+            )
+        return value
+
+    @field_validator("section_path")
+    @classmethod
+    def validate_section_path_utf8_bytes(cls, value: str | None) -> str | None:
+        if value is not None and len(value.encode("utf-8")) > MAX_KNOWLEDGE_SECTION_PATH_BYTES:
+            raise ValueError(
+                f"section_path must not exceed {MAX_KNOWLEDGE_SECTION_PATH_BYTES} UTF-8 bytes"
+            )
+        return value
+
+    @model_validator(mode="after")
+    def validate_body_utf8_bytes(self) -> "ManualKnowledgeRequest":
+        body_bytes = len(self.questions.encode("utf-8")) + len(self.answer.encode("utf-8"))
+        if body_bytes > MAX_KNOWLEDGE_BODY_BYTES:
+            raise ValueError(
+                f"questions and answer combined must not exceed {MAX_KNOWLEDGE_BODY_BYTES} UTF-8 bytes"
+            )
+        return self
+
+
+class ReviewRequest(BaseModel):
+    """Operator-approved answer for flywheel publication."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    approved_answer: str = Field(min_length=1, max_length=10_000)
+
+    @field_validator("approved_answer")
+    @classmethod
+    def validate_approved_answer_utf8_bytes(cls, value: str) -> str:
+        if len(value.encode("utf-8")) > MAX_REVIEW_ANSWER_BYTES:
+            raise ValueError(
+                f"approved_answer must not exceed {MAX_REVIEW_ANSWER_BYTES} UTF-8 bytes"
+            )
+        return value
+
+
+class KnowledgeCitationView(BaseModel):
+    """Public citation fields safe for customer-facing source popups."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    category: str
+    section_path: str | None = None
+    questions: str
+    answer: str
+
 
 class KnowledgeChunkView(KnowledgeDraftView):
-    """Browser-safe authoritative knowledge state."""
+    """Operator-console authoritative knowledge state."""
 
     id: int
     vector_id: str | None
@@ -278,6 +347,7 @@ class KnowledgeChunkPage(BaseModel):
     all_total: int
     pending_total: int
     done_total: int
+    failed_total: int = 0
 
 
 class KnowledgeOverview(BaseModel):

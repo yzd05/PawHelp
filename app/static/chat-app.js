@@ -1,0 +1,1119 @@
+"use strict";
+(async function startChat() {
+  await window.PawHelpStorage.prepare();
+  const messages = document.querySelector("#messages");
+  const form = document.querySelector("#chatForm");
+  const input = document.querySelector("#messageInput");
+  const sendButton = document.querySelector("#sendButton");
+  const newChatButton = document.querySelector("#newChatButton");
+  const agentStatus = document.querySelector("#agentStatus");
+  const conversationPreview = document.querySelector("#conversationPreview");
+  const sourceModal = document.querySelector("#sourceModal");
+  const sourceClose = document.querySelector("#sourceClose");
+  const sourceMeta = document.querySelector("#sourceMeta");
+  const sourceQuestion = document.querySelector("#sourceQuestion");
+  const sourceAnswer = document.querySelector("#sourceAnswer");
+  const ticketModal = document.querySelector("#ticketModal");
+  const ticketForm = document.querySelector("#ticketForm");
+  const ticketType = document.querySelector("#ticketType");
+  const ticketDescription = document.querySelector("#ticketDescription");
+  const ticketError = document.querySelector("#ticketError");
+  const ticketCancel = document.querySelector("#ticketCancel");
+  const ticketSubmit = document.querySelector("#ticketSubmit");
+  const refundModal = document.querySelector("#refundModal");
+  const refundForm = document.querySelector("#refundForm");
+  const refundOrder = document.querySelector("#refundOrder");
+  const refundReason = document.querySelector("#refundReason");
+  const refundDescription = document.querySelector("#refundDescription");
+  const refundError = document.querySelector("#refundError");
+  const refundCancel = document.querySelector("#refundCancel");
+  const refundSubmit = document.querySelector("#refundSubmit");
+
+  const USER_ID_KEY = "pawhelp.userId";
+  const CONVERSATION_ID_KEY = "pawhelp.conversationId";
+  const FEEDBACK_KEY = "pawhelp.messageFeedback.server";
+  const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+  function readStoredUuid(key) {
+    const value = localStorage.getItem(key);
+    return value && UUID_PATTERN.test(value) ? value : null;
+  }
+
+  function readStoredConversationId() {
+    const value = localStorage.getItem(CONVERSATION_ID_KEY);
+    if (!value || !/^\d+$/.test(value)) return null;
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+  }
+
+  const userId = readStoredUuid(USER_ID_KEY) || crypto.randomUUID();
+  let conversationId = readStoredConversationId();
+  let isStreaming = false;
+  let activeController = null;
+  let conversationEpoch = 0;
+  let pendingTicket = null;
+  let ticketSubmitting = false;
+  let pendingRefund = null;
+  let refundSubmitting = false;
+  let activeTicketPreview = null;
+
+  localStorage.setItem(USER_ID_KEY, userId);
+
+  const contextStatus = window.PawHelpContextStatus.create({
+    element: document.querySelector("#contextCompressionStatus"),
+    userId,
+    getContext: () => ({ id: conversationId, epoch: conversationEpoch }),
+  });
+  window.addEventListener("pagehide", (event) => {
+    if (!event.persisted) contextStatus.stop();
+  });
+  window.addEventListener("pageshow", (event) => {
+    if (event.persisted) contextStatus.refresh();
+  });
+
+  class PublicFacingError extends Error {}
+
+  function scrollToLatest() {
+    messages.scrollTop = messages.scrollHeight;
+  }
+
+  function resizeInput() {
+    input.style.overflowY = "hidden";
+    input.style.height = "auto";
+    const nextHeight = Math.min(Math.max(input.scrollHeight, 50), 126);
+    input.style.height = `${nextHeight}px`;
+    input.style.overflowY = input.scrollHeight > 126 ? "auto" : "hidden";
+    sendButton.disabled = isStreaming || !input.value.trim();
+  }
+
+  function addDayLabel() {
+    const label = document.createElement("p");
+    label.className = "day-label";
+    label.textContent = "今天";
+    messages.appendChild(label);
+  }
+
+  function addMessage(role, content = "", state = "normal") {
+    const row = document.createElement("div");
+    row.className = `message-row ${role}${state === "error" ? " error" : ""}`;
+
+    if (role === "assistant") {
+      const avatar = document.createElement("span");
+      avatar.className = "mini-avatar";
+      avatar.setAttribute("aria-hidden", "true");
+      avatar.textContent = "喵";
+      row.appendChild(avatar);
+    }
+
+    const bubble = document.createElement("div");
+    bubble.className = "message";
+    const copy = document.createElement("div");
+    copy.className = "message-copy";
+    copy.textContent = content;
+    bubble.appendChild(copy);
+
+    const traces = document.createElement("div");
+    traces.className = "tool-traces";
+    bubble.appendChild(traces);
+
+    const feedback = document.createElement("div");
+    feedback.className = "message-feedback";
+    bubble.appendChild(feedback);
+
+    const actions = document.createElement("div");
+    actions.className = "suggested-actions";
+    bubble.appendChild(actions);
+
+    row.appendChild(bubble);
+    messages.appendChild(row);
+    scrollToLatest();
+    return { row, bubble, copy, traces, feedback, actions, badges: new Map() };
+  }
+
+  function readFeedback() {
+    try {
+      const value = JSON.parse(localStorage.getItem(FEEDBACK_KEY) || "{}");
+      return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  function renderFeedback(assistant, messageId) {
+    if (!Number.isSafeInteger(messageId) || messageId < 1) return;
+    const stored = readFeedback();
+    const current = stored[String(messageId)];
+    assistant.feedback.replaceChildren();
+    for (const [value, label] of [["up", "👍"], ["down", "👎"]]) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = `feedback-button${current === value ? " selected" : ""}`;
+      button.textContent = label;
+      button.setAttribute("aria-label", value === "up" ? "回答有帮助" : "回答没有帮助");
+      button.disabled = Boolean(current);
+      button.addEventListener("click", async () => {
+        const latest = readFeedback();
+        if (latest[String(messageId)]) return;
+        const cid = conversationId;
+        for (const item of assistant.feedback.querySelectorAll("button")) item.disabled = true;
+        try {
+          const response = await fetch(
+            `/v1/conversations/${encodeURIComponent(cid)}/messages/${encodeURIComponent(messageId)}/feedback`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "X-Demo-User-Id": userId },
+              body: JSON.stringify({ vote: value }),
+            },
+          );
+          if (!response.ok) throw new Error("feedback failed");
+          const result = await response.json();
+          const updated = readFeedback();
+          updated[String(messageId)] = result.feedback;
+          localStorage.setItem(FEEDBACK_KEY, JSON.stringify(updated));
+          renderFeedback(assistant, messageId);
+        } catch (_) {
+          renderFeedback(assistant, messageId);
+          const error = document.createElement("span");
+          error.textContent = "反馈保存失败，请重试";
+          assistant.feedback.appendChild(error);
+        }
+      });
+      assistant.feedback.appendChild(button);
+    }
+    if (current) {
+      const label = document.createElement("span");
+      label.className = "feedback-label";
+      label.textContent = current === "down" ? "已记录未解决的问题，等待处理" : "反馈已保存";
+      assistant.feedback.appendChild(label);
+    }
+  }
+
+  async function openSource(source) {
+    sourceModal.hidden = false;
+    sourceMeta.textContent = `来源 [${source.number}] · 正在读取…`;
+    sourceQuestion.textContent = "";
+    sourceAnswer.textContent = "";
+    sourceClose.focus();
+    try {
+      const response = await fetch(`/v1/knowledge/chunks/${encodeURIComponent(source.chunk_id)}`);
+      if (!response.ok) throw new Error("source unavailable");
+      const chunk = await response.json();
+      sourceMeta.textContent = `${chunk.category} · ${chunk.section_path || "未标章节"}`;
+      sourceQuestion.textContent = chunk.questions || "";
+      sourceAnswer.textContent = chunk.answer || "";
+    } catch (_) {
+      sourceMeta.textContent = `来源 [${source.number}]`;
+      sourceAnswer.textContent = "来源暂时无法读取，请稍后重试。";
+    }
+  }
+
+  function renderFinalAnswer(assistant, text, sources, messageId) {
+    if (window.PawHelpMarkdown) window.PawHelpMarkdown.render(assistant.copy, text, sources, openSource);
+    else assistant.copy.textContent = String(text || "");
+    renderFeedback(assistant, messageId);
+  }
+
+  function errorMessage(payload, fallback) {
+    const detail = payload?.detail;
+    if (typeof detail === "string") return detail;
+    if (detail?.message) return detail.message;
+    if (detail?.code === "context_budget_exceeded") {
+      return "本次输入过长或模型上下文预算不足，请缩短输入，或请管理员检查窗口配置。历史会话仍然保留。";
+    }
+    return fallback;
+  }
+
+  function openTicketForm(messageId, button) {
+    if (!Number.isSafeInteger(conversationId) || conversationId < 1) return;
+    pendingTicket = { conversationId, messageId, button };
+    ticketForm.reset();
+    ticketError.hidden = true;
+    ticketModal.hidden = false;
+    ticketType.focus();
+  }
+
+  function closeTicketForm() {
+    if (ticketSubmitting) return;
+    ticketModal.hidden = true;
+    ticketForm.reset();
+    ticketError.hidden = true;
+    const button = pendingTicket?.button;
+    pendingTicket = null;
+    if (button?.isConnected && !button.disabled) button.focus();
+  }
+
+  function formatTicketTime(utcValue) {
+    const date = new Date(utcValue);
+    if (Number.isNaN(date.getTime())) return "创建时间暂不可用";
+    const local = new Intl.DateTimeFormat("zh-CN", {
+      timeZone: "Asia/Hong_Kong",
+      hourCycle: "h23",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    }).format(date);
+    return `${local}（香港/北京时间）`;
+  }
+
+  async function submitTicketForm(event) {
+    event.preventDefault();
+    if (!pendingTicket || ticketSubmitting) return;
+    const description = ticketDescription.value.trim();
+    if (!ticketType.value || !description) {
+      ticketError.textContent = "请选择反馈类别并填写问题描述。";
+      ticketError.hidden = false;
+      (ticketType.value ? ticketDescription : ticketType).focus();
+      return;
+    }
+    const action = pendingTicket;
+    const fallback = "工单暂时无法创建，请稍后重试；您填写的内容仍保留在表单里。";
+    ticketSubmitting = true;
+    ticketSubmit.disabled = true;
+    ticketCancel.disabled = true;
+    ticketError.hidden = true;
+    try {
+      const response = await fetch(`/v1/conversations/${encodeURIComponent(action.conversationId)}/tickets`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: userId,
+          message_id: action.messageId,
+          ticket_type: ticketType.value,
+          description,
+        }),
+      });
+      if (!response.ok) {
+        let payload = null;
+        try {
+          payload = await response.json();
+        } catch (_) {
+          /* keep fallback */
+        }
+        throw new PublicFacingError(errorMessage(payload, fallback));
+      }
+      const ticket = await response.json();
+      ticketSubmitting = false;
+      action.button.disabled = true;
+      closeTicketForm();
+      addMessage(
+        "assistant",
+        `工单已创建：${ticket.ticket_no}（${ticket.status}）。创建时间：${formatTicketTime(ticket.created_at)}`,
+      );
+    } catch (error) {
+      ticketError.textContent = error instanceof PublicFacingError ? error.message : fallback;
+      ticketError.hidden = false;
+    } finally {
+      ticketSubmitting = false;
+      ticketSubmit.disabled = false;
+      ticketCancel.disabled = false;
+    }
+  }
+
+  function openRefundForm(messageId, orderId, button) {
+    if (!Number.isSafeInteger(conversationId) || !/^\d{4,20}$/.test(String(orderId))) return;
+    pendingRefund = { conversationId, messageId, orderId, button };
+    refundForm.reset();
+    refundOrder.value = `订单 ${orderId}`;
+    refundError.hidden = true;
+    refundModal.hidden = false;
+    refundReason.focus();
+  }
+
+  function closeRefundForm() {
+    if (refundSubmitting) return;
+    refundModal.hidden = true;
+    refundForm.reset();
+    refundError.hidden = true;
+    const button = pendingRefund?.button;
+    pendingRefund = null;
+    if (button?.isConnected && !button.disabled) button.focus();
+  }
+
+  async function submitRefundForm(event) {
+    event.preventDefault();
+    if (!pendingRefund || refundSubmitting) return;
+    if (!refundReason.value) {
+      refundError.textContent = "请从固定类目中选择退款原因。";
+      refundError.hidden = false;
+      refundReason.focus();
+      return;
+    }
+    const action = pendingRefund;
+    const fallback = "退款申请暂时无法保存，请稍后重试；您选择的原因与说明仍保留在表单里。";
+    refundSubmitting = true;
+    refundSubmit.disabled = true;
+    refundCancel.disabled = true;
+    refundError.hidden = true;
+    try {
+      const response = await fetch(
+        `/v1/conversations/${encodeURIComponent(action.conversationId)}/refund-requests`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user_id: userId,
+            message_id: action.messageId,
+            order_id: action.orderId,
+            reason: refundReason.value,
+            description: refundDescription.value.trim() || null,
+          }),
+        },
+      );
+      if (!response.ok) {
+        let payload = null;
+        try {
+          payload = await response.json();
+        } catch (_) {
+          /* keep fallback */
+        }
+        throw new PublicFacingError(errorMessage(payload, fallback));
+      }
+      const result = await response.json();
+      refundSubmitting = false;
+      action.button.disabled = true;
+      closeRefundForm();
+      addMessage(
+        "assistant",
+        `退款申请已提交：${result.request_no}（${result.status}）。提交时间：${formatTicketTime(result.created_at)}。`,
+      );
+    } catch (error) {
+      refundError.textContent = error instanceof PublicFacingError ? error.message : fallback;
+      refundError.hidden = false;
+    } finally {
+      refundSubmitting = false;
+      refundSubmit.disabled = false;
+      refundCancel.disabled = false;
+    }
+  }
+
+  function renderSuggestedActions(assistant, actions, messageId, relatedOrderId = null) {
+    assistant.actions.replaceChildren();
+    if (!Array.isArray(actions) || !Number.isSafeInteger(messageId)) return;
+    for (const action of ["转人工", "建工单", "申请退款"]) {
+      if (!actions.includes(action)) continue;
+      if (action === "申请退款" && !/^\d{4,20}$/.test(String(relatedOrderId))) continue;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "suggested-action";
+      button.textContent = action;
+      button.addEventListener("click", async () => {
+        if (action === "转人工") {
+          if (!window.confirm("仅模拟转接展示，不会连接真人客服。确定继续吗？")) return;
+          button.disabled = true;
+          addMessage("assistant", "人工转接演示已开始");
+          addMessage("assistant", "此为模拟坐席，未连接真人客服。正式服务可接入客服工单或在线坐席系统。");
+          return;
+        }
+        if (action === "申请退款") {
+          openRefundForm(messageId, relatedOrderId, button);
+          return;
+        }
+        openTicketForm(messageId, button);
+      });
+      assistant.actions.appendChild(button);
+    }
+  }
+
+  function showTyping(assistant) {
+    const typing = document.createElement("span");
+    typing.className = "typing-dots";
+    typing.setAttribute("aria-label", "正在输入");
+    for (let index = 0; index < 3; index += 1) {
+      typing.appendChild(document.createElement("i"));
+    }
+    assistant.copy.replaceChildren(typing);
+  }
+
+  function renderStreamingText(assistant, text) {
+    if (window.PawHelpMarkdown) window.PawHelpMarkdown.render(assistant.copy, text);
+    else assistant.copy.textContent = text;
+    const caret = document.createElement("span");
+    caret.className = "streaming-caret";
+    caret.setAttribute("aria-hidden", "true");
+    assistant.copy.appendChild(caret);
+    scrollToLatest();
+  }
+
+  function toolBadgeText(label, status) {
+    if (status === "succeeded") return `✓ ${label} · 已完成`;
+    if (status === "failed") return `× ${label} · 未完成（失败或拦截）`;
+    return `↻ ${label} · 执行中`;
+  }
+
+  function updateToolTracePresentation(assistant) {
+    assistant.traces.classList.add("reported");
+    let summary = assistant.traces.querySelector(".tool-trace-summary");
+    if (!summary) {
+      summary = document.createElement("span");
+      summary.className = "tool-trace-summary";
+      assistant.traces.prepend(summary);
+    }
+    const count = assistant.badges.size;
+    summary.textContent = count
+      ? `本轮工具调用记录 ${count} 条（含失败或拦截，历史查询不计入）`
+      : "本轮未调用工具（未进行新的工具查询）";
+
+    let toggle = assistant.traces.querySelector(".tool-trace-toggle");
+    if (count > 3 && !toggle) {
+      toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "tool-trace-toggle";
+      toggle.addEventListener("click", () => {
+        assistant.traceExpanded = !assistant.traceExpanded;
+        updateToolTracePresentation(assistant);
+        scrollToLatest();
+      });
+      assistant.traces.appendChild(toggle);
+    }
+    if (toggle) {
+      assistant.traces.appendChild(toggle);
+      toggle.hidden = count <= 3;
+      toggle.textContent = assistant.traceExpanded ? "收起工具记录" : `查看全部 ${count} 条工具记录`;
+    }
+    let index = 0;
+    for (const badge of assistant.badges.values()) {
+      badge.hidden = count > 3 && !assistant.traceExpanded && index >= 3;
+      index += 1;
+    }
+  }
+
+  function upsertToolBadge(assistant, callId, label, status) {
+    if (typeof callId !== "string" || !callId) return;
+    if (typeof label !== "string" || !label) return;
+    const safeStatus = ["running", "succeeded", "failed"].includes(status) ? status : "running";
+    let badge = assistant.badges.get(callId);
+    if (!badge) {
+      badge = document.createElement("span");
+      badge.className = "tool-badge";
+      badge.dataset.index = String(assistant.badges.size + 1);
+      assistant.badges.set(callId, badge);
+      assistant.traces.appendChild(badge);
+    }
+    badge.dataset.label = label;
+    badge.className = `tool-badge ${safeStatus}`;
+    badge.textContent = `#${badge.dataset.index} ${toolBadgeText(label, safeStatus)}`;
+    updateToolTracePresentation(assistant);
+    scrollToLatest();
+  }
+
+  function markRunningBadgesFailed(assistant) {
+    for (const badge of assistant.badges.values()) {
+      if (badge.classList.contains("running")) {
+        badge.className = "tool-badge failed";
+        badge.textContent = `#${badge.dataset.index} ${toolBadgeText(badge.dataset.label, "failed")}`;
+      }
+    }
+  }
+
+  function addSuggestions() {
+    const suggestions = document.createElement("div");
+    suggestions.className = "suggestions";
+    suggestions.id = "suggestions";
+    for (const text of ["查询订单物流", "商品如何退换", "发票问题"]) {
+      const button = document.createElement("button");
+      button.className = "suggestion";
+      button.type = "button";
+      button.textContent = text;
+      button.addEventListener("click", () => sendMessage(text));
+      suggestions.appendChild(button);
+    }
+    messages.appendChild(suggestions);
+  }
+
+  function renderWelcome() {
+    activeTicketPreview = null;
+    messages.replaceChildren();
+    addDayLabel();
+    addMessage(
+      "assistant",
+      "你好，我是小喵。\n订单、物流或售后问题都可以告诉我，我会尽力帮你理清下一步。",
+    );
+    addSuggestions();
+    scrollToLatest();
+  }
+
+  function parseEventBlock(block) {
+    let eventName = "message";
+    const dataLines = [];
+
+    for (const line of block.split(/\r?\n/)) {
+      if (!line || line.startsWith(":")) continue;
+      const colon = line.indexOf(":");
+      const field = colon === -1 ? line : line.slice(0, colon);
+      let value = colon === -1 ? "" : line.slice(colon + 1);
+      if (value.startsWith(" ")) value = value.slice(1);
+      if (field === "event") eventName = value;
+      if (field === "data") dataLines.push(value);
+    }
+
+    if (!dataLines.length) return null;
+    try {
+      return { event: eventName, data: JSON.parse(dataLines.join("\n")) };
+    } catch (_) {
+      throw new PublicFacingError("收到的流式响应格式无效，请重试。");
+    }
+  }
+
+  async function readEventStream(response, onEvent) {
+    if (!response.body) throw new PublicFacingError("当前浏览器不支持流式响应");
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    const drain = (flush = false) => {
+      if (flush) buffer += decoder.decode();
+      let match;
+      while ((match = buffer.match(/\r?\n\r?\n/))) {
+        const block = buffer.slice(0, match.index);
+        buffer = buffer.slice(match.index + match[0].length);
+        const parsed = parseEventBlock(block);
+        if (parsed) onEvent(parsed.event, parsed.data);
+      }
+      if (flush && buffer.trim()) {
+        const parsed = parseEventBlock(buffer);
+        if (parsed) onEvent(parsed.event, parsed.data);
+        buffer = "";
+      }
+    };
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      drain();
+    }
+    drain(true);
+  }
+
+  function startOperation() {
+    if (activeController) activeController.abort();
+    const operation = {
+      controller: new AbortController(),
+      epoch: conversationEpoch,
+    };
+    activeController = operation.controller;
+    return operation;
+  }
+
+  function isCurrentOperation(operation) {
+    return (
+      operation.epoch === conversationEpoch &&
+      activeController === operation.controller &&
+      !operation.controller.signal.aborted
+    );
+  }
+
+  function finishOperation(operation) {
+    if (activeController === operation.controller) activeController = null;
+  }
+
+  function applyToolTrace(assistant, trace) {
+    for (const item of Array.isArray(trace) ? trace : []) {
+      if (!item || typeof item !== "object") continue;
+      upsertToolBadge(
+        assistant,
+        item.call_id || item.tool_call_id,
+        item.label + (item.source === "mcp" ? `（MCP · ${item.mcp_server || "外部"}）` : ""),
+        item.status,
+      );
+    }
+    updateToolTracePresentation(assistant);
+  }
+
+  function renderHistory(history) {
+    messages.replaceChildren();
+    addDayLabel();
+    let latestUserText = "";
+    for (const item of history) {
+      if (!item || !["user", "assistant"].includes(item.role)) continue;
+      const rendered = addMessage(
+        item.role,
+        typeof item.content === "string" ? item.content : "",
+      );
+      if (item.role === "user" && typeof item.content === "string") {
+        latestUserText = item.content;
+      }
+      if (item.role === "assistant") {
+        applyToolTrace(rendered, item.tool_trace);
+        renderFinalAnswer(rendered, item.content, item.sources, item.id);
+        renderSuggestedActions(rendered, item.suggested_actions, item.id, item.related_order_id);
+      }
+    }
+    if (!history.length) {
+      renderWelcome();
+      return;
+    }
+    conversationPreview.textContent = latestUserText || "已恢复当前会话";
+    scrollToLatest();
+  }
+
+  let conversationListEpoch = 0;
+  async function refreshConversationList() {
+    const epoch = ++conversationListEpoch;
+    try {
+      const response = await fetch("/api/conversations", { headers: { "X-Demo-User-Id": userId } });
+      if (!response.ok) return;
+      const rows = await response.json();
+      if (epoch !== conversationListEpoch || !Array.isArray(rows)) return;
+      renderConversationList(rows);
+      return rows;
+    } catch (_) {
+      /* silent degradation, current conversation stays usable */
+    }
+  }
+
+  async function refreshConversationTitle() {
+    const rows = await refreshConversationList();
+    if (rows?.some((row) => row.id === conversationId && !row.title)) {
+      setTimeout(refreshConversationList, 3000);
+    }
+  }
+
+  function renderConversationList(rows) {
+    const list = document.querySelector("#conversationList");
+    list.replaceChildren();
+    for (const row of rows) {
+      if (!Number.isSafeInteger(row.id) || row.id < 1) continue;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "session-button";
+      button.setAttribute("aria-current", row.id === conversationId ? "true" : "false");
+      const label = document.createElement("span");
+      label.className = "session-title";
+      label.textContent = row.preview || "新会话";
+      button.appendChild(label);
+      const badge = document.createElement("small");
+      badge.textContent = `会话 ${row.id}`;
+      button.appendChild(badge);
+      button.addEventListener("click", () => switchConversation(row.id));
+      list.appendChild(button);
+    }
+  }
+
+  async function switchConversation(id) {
+    if (ticketSubmitting || refundSubmitting || isStreaming || id === conversationId) return;
+    activeTicketPreview = null;
+    closeTicketForm();
+    closeRefundForm();
+    sourceModal.hidden = true;
+    conversationEpoch += 1;
+    if (activeController) activeController.abort();
+    activeController = null;
+    conversationId = id;
+    contextStatus.refresh();
+    localStorage.setItem(CONVERSATION_ID_KEY, String(id));
+    input.value = "";
+    messages.replaceChildren();
+    await hydrateConversation();
+    refreshConversationList();
+  }
+
+  async function hydrateConversation() {
+    if (!conversationId) {
+      renderWelcome();
+      return;
+    }
+
+    const requestedConversationId = conversationId;
+    const operation = startOperation();
+    isStreaming = true;
+    agentStatus.textContent = "正在恢复会话…";
+    resizeInput();
+
+    try {
+      const response = await fetch(
+        `/v1/conversations/${encodeURIComponent(requestedConversationId)}/messages`,
+        {
+          headers: { "X-Demo-User-Id": userId },
+          signal: operation.controller.signal,
+        },
+      );
+      if (!isCurrentOperation(operation)) return;
+
+      if (response.status === 404) {
+        renderWelcome();
+        return;
+      }
+      if (!response.ok) {
+        let payload = null;
+        try {
+          payload = await response.json();
+        } catch (_) {
+          /* keep fallback */
+        }
+        throw new PublicFacingError(errorMessage(payload, `恢复会话失败（${response.status}）`));
+      }
+
+      let history;
+      try {
+        history = await response.json();
+      } catch (_) {
+        throw new PublicFacingError("收到的历史记录格式无效，请刷新重试。");
+      }
+      if (!Array.isArray(history)) {
+        throw new PublicFacingError("收到的历史记录格式无效，请刷新重试。");
+      }
+      if (isCurrentOperation(operation)) {
+        const savedFeedback = readFeedback();
+        for (const message of history) {
+          if (message.feedback) savedFeedback[String(message.id)] = message.feedback;
+        }
+        localStorage.setItem(FEEDBACK_KEY, JSON.stringify(savedFeedback));
+        renderHistory(history);
+        activeTicketPreview = null;
+        const pendingResponse = await fetch(
+          `/v1/conversations/${encodeURIComponent(requestedConversationId)}/pending-order`,
+          { headers: { "X-Demo-User-Id": userId }, signal: operation.controller.signal },
+        );
+        if (pendingResponse.ok && isCurrentOperation(operation)) {
+          const pending = await pendingResponse.json();
+          if (pending.pending && pending.selection) {
+            renderOrderSelection(addMessage("assistant"), pending.selection);
+          }
+        }
+        const ticketResponse = await fetch(
+          `/v1/conversations/${encodeURIComponent(requestedConversationId)}/pending-ticket`,
+          { headers: { "X-Demo-User-Id": userId }, signal: operation.controller.signal },
+        );
+        if (ticketResponse.ok && isCurrentOperation(operation)) {
+          const pending = await ticketResponse.json();
+          if (pending.pending && pending.confirmation) {
+            renderTicketConfirmation(addMessage("assistant"), pending.confirmation);
+          }
+        }
+      }
+    } catch (error) {
+      if (error.name === "AbortError" || !isCurrentOperation(operation)) return;
+      renderWelcome();
+      const failure = addMessage("assistant", "", "error");
+      failure.copy.textContent =
+        error instanceof PublicFacingError ? error.message : "会话暂时无法恢复，请稍后刷新重试。";
+    } finally {
+      if (isCurrentOperation(operation)) {
+        finishOperation(operation);
+        isStreaming = false;
+        agentStatus.textContent = "在线，通常立即回复";
+        resizeInput();
+        input.focus();
+        scrollToLatest();
+      }
+    }
+  }
+
+  function renderOrderSelection(assistant, payload) {
+    assistant.copy.textContent = payload.message || "请选择要处理的演示订单。";
+    assistant.actions.replaceChildren();
+    const choices = document.createElement("div");
+    choices.className = "order-choice-list";
+    const orders = Array.isArray(payload.orders) ? payload.orders : [];
+    for (const order of orders) {
+      if (!order || !/^\d{4,20}$/.test(String(order.order_id))) continue;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "order-choice";
+      button.textContent = order.label || `演示订单 ${order.order_id}`;
+      const item = document.createElement("small");
+      item.textContent = order.item || order.product || "商品信息未提供";
+      button.appendChild(item);
+      const status = document.createElement("small");
+      status.textContent = `${order.status_label || "状态未提供"} · ¥${order.amount || "—"}`;
+      button.appendChild(status);
+      for (const [label, value] of [["下单", order.created_at], ["签收", order.delivered_at]]) {
+        if (!value) continue;
+        const date = document.createElement("small");
+        date.textContent = `${label}：${formatTicketTime(value)}`;
+        button.appendChild(date);
+      }
+      button.addEventListener("click", () =>
+        resumeSelectedOrder(order.order_id, payload.message_id, choices),
+      );
+      choices.appendChild(button);
+    }
+    assistant.actions.appendChild(choices);
+    scrollToLatest();
+  }
+
+  function renderTicketConfirmation(assistant, payload) {
+    activeTicketPreview = payload;
+    assistant.copy.textContent = "工单预览：请核对后确认提交。确认前不会创建工单。";
+    assistant.actions.replaceChildren();
+    const card = document.createElement("div");
+    card.className = "order-choice-list";
+    card.dataset.ticketPreview = payload.proposal_id;
+    const type = document.createElement("p");
+    type.textContent = `反馈类别：${payload.ticket_type}`;
+    const description = document.createElement("p");
+    description.className = "ticket-preview-description";
+    description.textContent = `问题描述：${payload.description}`;
+    card.append(type, description);
+    for (const [text, confirmed] of [["确认提交", true], ["取消", false]]) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "order-choice";
+      button.textContent = text;
+      button.addEventListener("click", () => resumeTicketConfirmation(payload, confirmed, card));
+      card.appendChild(button);
+    }
+    assistant.actions.appendChild(card);
+    scrollToLatest();
+  }
+
+  async function resumeTicketConfirmation(payload, confirmed, card) {
+    if (isStreaming || !conversationId || activeTicketPreview?.proposal_id !== payload.proposal_id) {
+      return;
+    }
+    for (const button of card.querySelectorAll("button")) button.disabled = true;
+    isStreaming = true;
+    const assistant = addMessage("assistant");
+    showTyping(assistant);
+    const operation = startOperation();
+    try {
+      const response = await fetch(`/v1/conversations/${encodeURIComponent(conversationId)}/confirm-ticket`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Accept": "text/event-stream" },
+        body: JSON.stringify({
+          user_id: userId,
+          message_id: payload.message_id,
+          proposal_id: payload.proposal_id,
+          confirmed,
+        }),
+        signal: operation.controller.signal,
+      });
+      if (!response.ok) throw new PublicFacingError("工单预览已失效或已处理，请刷新会话核对。");
+      await consumeChatResponse(response, assistant, operation);
+      if (activeTicketPreview?.proposal_id === payload.proposal_id) activeTicketPreview = null;
+      const result = document.createElement("p");
+      result.textContent = confirmed ? "确认请求已处理，请以上方结果为准。" : "已取消，不提交工单。";
+      card.replaceChildren(result);
+    } catch (error) {
+      if (error.name === "AbortError" || !isCurrentOperation(operation)) return;
+      markRunningBadgesFailed(assistant);
+      assistant.copy.textContent =
+        error instanceof PublicFacingError
+          ? error.message
+          : "确认请求失败，请刷新核对；不会自动重复写入。";
+      for (const button of card.querySelectorAll("button")) button.disabled = false;
+    } finally {
+      if (isCurrentOperation(operation)) {
+        finishOperation(operation);
+        isStreaming = false;
+        resizeInput();
+      }
+    }
+  }
+
+  async function consumeChatResponse(response, assistant, operation) {
+    let assistantText = "";
+    let completed = false;
+    await readEventStream(response, (event, data) => {
+      if (!isCurrentOperation(operation)) return;
+      if (event === "conversation" && Number.isSafeInteger(data.conversation_id) && data.conversation_id > 0) {
+        const changed = conversationId !== data.conversation_id;
+        conversationId = data.conversation_id;
+        if (changed) contextStatus.refresh();
+        localStorage.setItem(CONVERSATION_ID_KEY, String(conversationId));
+        refreshConversationList();
+      } else if (event === "tool_status") {
+        upsertToolBadge(
+          assistant,
+          data.call_id,
+          data.label + (data.source === "mcp" ? `（MCP · ${data.mcp_server || "外部"}）` : ""),
+          data.status,
+        );
+      } else if (event === "token") {
+        assistantText += data.content ?? "";
+        renderStreamingText(assistant, assistantText);
+      } else if (event === "order_selection") {
+        renderOrderSelection(assistant, data);
+        completed = true;
+      } else if (event === "ticket_confirmation") {
+        renderTicketConfirmation(assistant, data);
+        completed = true;
+      } else if (event === "done") {
+        assistantText = data.content ?? assistantText;
+        renderFinalAnswer(assistant, assistantText, data.sources, data.message_id);
+        applyToolTrace(assistant, data.tool_trace);
+        renderSuggestedActions(assistant, data.suggested_actions, data.message_id, data.related_order_id);
+        completed = true;
+        refreshConversationTitle();
+      } else if (event === "error") {
+        throw new PublicFacingError(data.message || "客服暂时开小差了，请稍后再试。");
+      }
+    });
+    if (!completed) throw new PublicFacingError("连接意外结束，请重新发送。");
+  }
+
+  async function resumeSelectedOrder(orderId, messageId, choices) {
+    if (isStreaming || !conversationId) return;
+    for (const button of choices.querySelectorAll("button")) button.disabled = true;
+    addMessage("user", `已选择订单 ${orderId}`);
+    isStreaming = true;
+    agentStatus.textContent = "正在查询订单与政策…";
+    const assistant = addMessage("assistant");
+    showTyping(assistant);
+    const operation = startOperation();
+    try {
+      const response = await fetch(`/v1/conversations/${encodeURIComponent(conversationId)}/select-order`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Accept": "text/event-stream" },
+        body: JSON.stringify({ user_id: userId, order_id: orderId, message_id: messageId }),
+        signal: operation.controller.signal,
+      });
+      if (!response.ok) throw new PublicFacingError("订单选择已失效，请重新提出问题。");
+      await consumeChatResponse(response, assistant, operation);
+    } catch (error) {
+      if (error.name === "AbortError" || !isCurrentOperation(operation)) return;
+      markRunningBadgesFailed(assistant);
+      assistant.row.classList.add("error");
+      assistant.copy.textContent =
+        error instanceof PublicFacingError ? error.message : "订单查询失败，请重试。";
+      for (const button of choices.querySelectorAll("button")) button.disabled = false;
+    } finally {
+      if (isCurrentOperation(operation)) {
+        finishOperation(operation);
+        isStreaming = false;
+        agentStatus.textContent = "在线，通常立即回复";
+        input.focus();
+      }
+    }
+  }
+
+  async function sendMessage(text) {
+    if (isStreaming || !text.trim()) return;
+    if (activeTicketPreview) {
+      addMessage("assistant", "请先确认或取消当前工单预览，再继续聊天。");
+      return;
+    }
+
+    const suggestions = document.querySelector("#suggestions");
+    if (suggestions) suggestions.remove();
+
+    const normalizedText = text.trim();
+    addMessage("user", normalizedText);
+    conversationPreview.textContent = normalizedText;
+
+    input.value = "";
+    isStreaming = true;
+    resizeInput();
+    agentStatus.textContent = "正在输入…";
+
+    const assistant = addMessage("assistant");
+    showTyping(assistant);
+    const operation = startOperation();
+
+    try {
+      const response = await fetch("/v1/chat/stream", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Accept": "text/event-stream" },
+        body: JSON.stringify({
+          user_id: userId,
+          conversation_id: conversationId,
+          message: normalizedText,
+        }),
+        signal: operation.controller.signal,
+      });
+
+      if (!isCurrentOperation(operation)) return;
+
+      if (!response.ok) {
+        let payload = null;
+        try {
+          payload = await response.json();
+        } catch (_) {
+          /* keep fallback */
+        }
+        throw new PublicFacingError(errorMessage(payload, `请求失败（${response.status}）`));
+      }
+
+      await consumeChatResponse(response, assistant, operation);
+    } catch (error) {
+      if (error.name === "AbortError" || !isCurrentOperation(operation)) return;
+      markRunningBadgesFailed(assistant);
+      assistant.row.classList.add("error");
+      assistant.copy.textContent =
+        error instanceof PublicFacingError ? error.message : "连接失败，请稍后再试。";
+    } finally {
+      if (isCurrentOperation(operation)) {
+        finishOperation(operation);
+        isStreaming = false;
+        agentStatus.textContent = "在线，通常立即回复";
+        resizeInput();
+        input.focus();
+        scrollToLatest();
+      }
+    }
+  }
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    sendMessage(input.value);
+  });
+
+  input.addEventListener("input", resizeInput);
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      form.requestSubmit();
+    }
+  });
+
+  newChatButton.addEventListener("click", () => {
+    if (ticketSubmitting || refundSubmitting) return;
+    closeTicketForm();
+    closeRefundForm();
+    conversationEpoch += 1;
+    if (activeController) activeController.abort();
+    activeController = null;
+    conversationId = null;
+    contextStatus.refresh();
+    localStorage.removeItem(CONVERSATION_ID_KEY);
+    renderWelcome();
+    conversationPreview.textContent = "随时为你解答订单问题";
+    agentStatus.textContent = "在线，通常立即回复";
+    isStreaming = false;
+    resizeInput();
+    input.focus();
+    refreshConversationList();
+  });
+
+  sourceClose.addEventListener("click", () => {
+    sourceModal.hidden = true;
+  });
+  sourceModal.addEventListener("click", (event) => {
+    if (event.target === sourceModal) sourceModal.hidden = true;
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !sourceModal.hidden) sourceModal.hidden = true;
+    if (event.key === "Escape" && !ticketModal.hidden) closeTicketForm();
+    if (event.key === "Escape" && !refundModal.hidden) closeRefundForm();
+  });
+  ticketForm.addEventListener("submit", submitTicketForm);
+  ticketCancel.addEventListener("click", closeTicketForm);
+  ticketModal.addEventListener("click", (event) => {
+    if (event.target === ticketModal) closeTicketForm();
+  });
+  refundForm.addEventListener("submit", submitRefundForm);
+  refundCancel.addEventListener("click", closeRefundForm);
+  refundModal.addEventListener("click", (event) => {
+    if (event.target === refundModal) closeRefundForm();
+  });
+
+  resizeInput();
+  hydrateConversation();
+  refreshConversationList();
+})().catch(() => {
+  const warning = document.createElement("p");
+  warning.className = "init-warning";
+  warning.setAttribute("role", "alert");
+  warning.textContent = "会话初始化未完成。请勿清除浏览器数据，请联系维护人员核对本地会话迁移后再刷新。";
+  document.body.prepend(warning);
+  document
+    .querySelectorAll("form input, form textarea, form select, form button")
+    .forEach((element) => {
+      element.disabled = true;
+    });
+});

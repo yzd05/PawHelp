@@ -1,0 +1,939 @@
+"use strict";
+(() => {
+  const adminHeaders = (extra = {}) =>
+    window.PawHelpOperations
+      ? window.PawHelpOperations.adminHeaders(extra)
+      : { "X-PawHelp-Local-Admin": "1", ...extra };
+
+  async function responseError(response, fallback) {
+    let payload = null;
+    try {
+      payload = await response.json();
+    } catch (_) {
+      /* keep fallback */
+    }
+    const detail = payload?.detail;
+    if (typeof detail === "string") return detail;
+    if (detail?.message) return detail.message;
+    return fallback;
+  }
+
+  const STRATEGIES = ["dense", "bm25", "hybrid", "hybrid_rerank"];
+  const STRATEGY_LABELS = {
+    dense: "纯向量",
+    bm25: "纯 BM25",
+    hybrid: "混合 RRF",
+    hybrid_rerank: "混合 + Rerank",
+  };
+  const BUCKETS = [
+    ["A_policy", "政策类"],
+    ["B_model", "型号类"],
+    ["C_colloquial", "口语类"],
+    ["E_multi", "多要点组合"],
+    ["F_identifier", "标识符"],
+    ["overall", "总体"],
+  ];
+  const ANSWERABLE_BUCKETS = BUCKETS.filter(([bucket]) => bucket !== "overall");
+  const STRATEGY_COLORS = ["var(--s-dense)", "var(--s-bm25)", "var(--s-hybrid)", "var(--s-rerank)"];
+  const statusBox = document.querySelector("#status");
+  const emptyState = document.querySelector("#emptyState");
+  const rerunCopy = document.querySelector("#rerunCopy");
+  const runMeta = document.querySelector("#runMeta");
+  const metrics = document.querySelector("#metrics");
+  const strategyLegend = document.querySelector("#strategyLegend");
+  const bucketChart = document.querySelector("#bucketChart");
+  const retrievalReading = document.querySelector("#retrievalReading");
+  const retrievalMetricHelp = document.querySelector("#retrievalMetricHelp");
+  const faithBars = document.querySelector("#faithBars");
+  const productionBreakdown = document.querySelector("#productionBreakdown");
+  const productionBreakdownTitle = document.querySelector("#productionBreakdownTitle");
+  const generationMetricHelp = document.querySelector("#generationMetricHelp");
+  const generationLegend = document.querySelector("#generationLegend");
+  const generationChart = document.querySelector("#generationChart");
+  const fullGeneration = document.querySelector("#fullGeneration");
+  const issueFilters = document.querySelector("#issueFilters");
+  const reviewNotice = document.querySelector("#reviewNotice");
+  const issueList = document.querySelector("#issueList");
+  const issuePagination = document.querySelector("#issuePagination");
+  const issueCount = document.querySelector("#issueCount");
+  const summaryTable = document.querySelector("#summaryTable");
+  const tableReading = document.querySelector("#tableReading");
+  const casePicker = document.querySelector("#casePicker");
+  const caseSummary = document.querySelector("#caseSummary");
+  const strategyGrid = document.querySelector("#strategyGrid");
+  const rerunButton = document.querySelector("#rerunButton");
+  const rerunButtons = [rerunButton, ...document.querySelectorAll(".rerun-trigger")];
+  let report = null;
+  let counts = null;
+  let selectedMetric = "mrr";
+  let selectedGenerationMetric = "answer_coverage";
+  let selectedIssueFilter = "all";
+  let selectedIssuePage = 1;
+  let faithReviews = new Map();
+  let reviewLoadError = "正在读取人工复核记录…";
+  const ISSUE_PAGE_SIZE = 10;
+
+  const percent = (value) => (value == null ? "未评测" : `${Math.round(Number(value) * 100)}%`);
+  const METRIC_NAMES = {
+    mrr: "MRR（必需证据组的平均倒数排名）",
+    recall_at_k: "Recall@5（前 5 条必需证据组命中率）",
+    evidence_coverage: "召回材料要点命中（字面）",
+    answer_coverage: "最终答案要点覆盖（模型）",
+    faithfulness: "回答事实有据（模型）",
+  };
+  const RETRIEVAL_HELP = {
+    mrr: "评估对象：知识块排序。每题按必需证据组计算：每组最早命中位置的倒数，未命中记 0；先平均各组，再平均可回答题。没有分组时用首个正确知识块倒数排名。越高越好。",
+    recall_at_k: "评估对象：前 5 条召回知识块。每题计算前 5 条命中的必需证据组数 ÷ 必需证据组总数，再平均可回答题；没有分组时按正确知识块计。越高越好。",
+    evidence_coverage: "评估对象：召回的前 10 条知识块原文，不是最终答案。每题计算字面匹配的标准答案要点数 ÷ 该题标准要点总数，再对可回答题求平均；同义改写也可能被记为未命中。",
+  };
+  const GENERATION_HELP = {
+    answer_coverage: "评估对象：模型生成的最终答案，不是召回材料。裁判模型逐个判断标准要点是否被回答覆盖；每题为覆盖要点数 ÷ 标准要点数，再对成功评分的可回答题求平均。失败或未运行的题不计入分母。",
+    faithfulness:
+      "评估对象：混合 + Rerank 的最终答案。裁判模型核查回答中的事实是否得到本次引用知识块支持，" +
+      "再对成功核查的可回答题求平均；明确拒答按规则记 1。其他三路线未执行此核查。“没答全”与“编造”是不同问题。",
+  };
+
+  function caseCounts() {
+    if (counts) return counts;
+    const bucketOf = new Map();
+    const answerableIds = new Set();
+    const refusalIds = new Set();
+    for (const row of report?.cases || []) {
+      bucketOf.set(row.case_id, row.query_type);
+      (row.expected_answerable === false ? refusalIds : answerableIds).add(row.case_id);
+    }
+    const byBucket = {};
+    for (const bucket of bucketOf.values()) byBucket[bucket] = (byBucket[bucket] || 0) + 1;
+    const dataset = report?.dataset || {};
+    const answerable = dataset.answerable_cases ?? answerableIds.size;
+    const refusal = dataset.refusal_cases ?? refusalIds.size;
+    byBucket.overall = answerable;
+    counts = { byBucket, answerable, refusal, total: dataset.total_cases ?? answerable + refusal };
+    return counts;
+  }
+
+  function bucketCaption(bucket, label) {
+    const caption = element("div", "bucket-label", label);
+    const total = caseCounts().byBucket[bucket];
+    caption.appendChild(element("small", "", total ? `${bucket} · ${total} 题` : bucket));
+    return caption;
+  }
+
+  function scoredMetric(strategy, bucket, metric) {
+    const values =
+      bucket === "overall"
+        ? report.strategies?.[strategy]
+        : report.by_query_type?.[`${strategy}:${bucket}`];
+    return values?.[metric] == null ? null : Number(values[metric]);
+  }
+
+  function setStatus(message, error = false) {
+    statusBox.textContent = message;
+    statusBox.className = `notice${error ? " error" : ""}`;
+  }
+
+  function element(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  }
+
+  function reportGeneratedStrategies() {
+    const recorded = report.run?.generation_strategies;
+    return new Set(recorded === "all" ? STRATEGIES : Array.isArray(recorded) ? recorded : []);
+  }
+
+  function hasSemanticCoverage() {
+    return (report.cases || []).some((row) =>
+      Object.prototype.hasOwnProperty.call(row, "answer_coverage"),
+    );
+  }
+
+  function renderMeta() {
+    const dataset = report.dataset || {};
+    const run = report.run || {};
+    const reportedCases = new Set((report.cases || []).map((row) => row.case_id)).size;
+    const resultCount = (report.cases || []).length;
+    const judgedRows = (report.cases || []).filter(
+      (row) =>
+        row.strategy === "hybrid_rerank" &&
+        (row.faithfulness_status === "completed" ||
+          (row.faithfulness_status == null && row.faithful != null)),
+    );
+    const suspectedCases = judgedRows.filter((row) => row.faithful === false).length;
+    const failedSteps =
+      run.generation_failed == null
+        ? "旧报告未记录"
+        : run.generation_enabled === false
+          ? "本次只评检索，未运行答案检查"
+          : `生成答案：${run.generation_failed} 题\n检查答案要点：${run.coverage_failed ?? 0} 题\n` +
+            `核查事实依据：${run.faithfulness_failed ?? 0} 题`;
+    const savedIssues =
+      run.ledger_failed == null
+        ? "旧报告未记录"
+        : run.generation_enabled === false || !judgedRows.length
+          ? "本次未核查编造问题"
+          : `本轮发现 ${suspectedCases} 题\n保存失败 ${run.ledger_failed} 题`;
+    const values = [
+      ["评估集", `${dataset.total_cases || reportedCases} 题`],
+      ["策略结果", `${resultCount} 条`],
+      ["知识库", `${run.knowledge_chunks ?? "—"} 块`],
+      ["嵌入 / 重排", `${run.embedding_model || "未记录"} · ${run.reranker_model || "未记录"}`],
+      ["裁判模型", run.judge_model || (run.generation_enabled === false ? "本次未运行" : "未记录")],
+      ["评估步骤报错", failedSteps, "这里是报错题数，不是模型调用次数，也不是答错题数。"],
+      ["疑似编造回答", savedIssues, "只保存被判为编造的回答，供人工复核；保存失败数不是编造数。"],
+      ["上次运行", run.generated_at ? new Date(run.generated_at).toLocaleString("zh-CN") : "旧报告"],
+    ];
+    runMeta.replaceChildren(
+      ...values.map(([label, value, help]) => {
+        const card = element("article", "run-card");
+        card.append(element("span", "", label), element("strong", "", value));
+        if (help) card.appendChild(element("small", "", help));
+        return card;
+      }),
+    );
+  }
+
+  function renderBucketChart() {
+    retrievalMetricHelp.textContent = RETRIEVAL_HELP[selectedMetric];
+    bucketChart.replaceChildren(
+      ...BUCKETS.map(([bucket, label]) => {
+        const group = element("div", "bucket-group");
+        const bars = element("div", "bucket-bars");
+        for (const strategy of STRATEGIES) {
+          const value = scoredMetric(strategy, bucket, selectedMetric);
+          const bar = element("div", "bucket-bar");
+          bar.style.height = `${Math.max(1, (value ?? 0) * 100)}%`;
+          bar.title =
+            `${STRATEGY_LABELS[strategy]} · ${METRIC_NAMES[selectedMetric]}：` +
+            `${value == null ? "未评测" : value.toFixed(3)}`;
+          bar.appendChild(element("b", "", value == null ? "—" : value.toFixed(2)));
+          bars.appendChild(bar);
+        }
+        group.append(bars, bucketCaption(bucket, label));
+        return group;
+      }),
+    );
+    const ranked = STRATEGIES.filter(
+      (strategy) => scoredMetric(strategy, "overall", selectedMetric) != null,
+    ).sort(
+      (left, right) =>
+        scoredMetric(right, "overall", selectedMetric) -
+        scoredMetric(left, "overall", selectedMetric),
+    );
+    retrievalReading.textContent = ranked.length
+      ? `读图：${STRATEGY_LABELS[ranked[0]]} 的总体${METRIC_NAMES[selectedMetric]}最高。各题型柱下标注题数；` +
+        `总体按全部 ${caseCounts().answerable} 道可回答题计算，不含 ${caseCounts().refusal} 道库外题。`
+      : "本轮未记录这个指标；空值不代表 0 分。";
+    document.querySelectorAll(".metric-tab").forEach((button) => {
+      button.classList.toggle("active", button.dataset.metric === selectedMetric);
+    });
+  }
+
+  function renderGenerationQuality() {
+    const generationEnabled = report.run?.generation_enabled !== false;
+    const generated = reportGeneratedStrategies();
+    const allStrategiesGenerated = STRATEGIES.every((strategy) => generated.has(strategy));
+    const showComparison =
+      generationEnabled &&
+      allStrategiesGenerated &&
+      hasSemanticCoverage() &&
+      selectedGenerationMetric === "answer_coverage";
+    generationChart.hidden = !showComparison;
+    productionBreakdown.hidden = !generationEnabled || showComparison;
+    generationMetricHelp.textContent = GENERATION_HELP[selectedGenerationMetric];
+    if (showComparison) {
+      generationLegend.replaceChildren(
+        ...STRATEGIES.map((strategy, index) => {
+          const item = element("span", "");
+          const swatch = element("i", "");
+          swatch.style.background = STRATEGY_COLORS[index];
+          item.append(swatch, document.createTextNode(STRATEGY_LABELS[strategy]));
+          return item;
+        }),
+      );
+    } else {
+      generationLegend.textContent = !generationEnabled
+        ? "本轮只评检索，未生成答案。"
+        : selectedGenerationMetric === "faithfulness"
+          ? "只对混合 + Rerank 核查回答事实依据；另外三条路线未评测此项。"
+          : hasSemanticCoverage()
+            ? "本轮只生成了部分路线；下方仅显示混合 + Rerank 的分桶结果，不能与未运行路线比较。"
+            : "旧报告未记录最终答案要点覆盖；缺失值不代表 0 分。";
+    }
+    if (!generationEnabled) {
+      generationChart.replaceChildren();
+      faithBars.replaceChildren();
+      document.querySelectorAll("[data-generation-metric]").forEach((button) => {
+        button.classList.toggle("active", button.dataset.generationMetric === selectedGenerationMetric);
+      });
+      return;
+    }
+    if (showComparison) {
+      generationChart.replaceChildren(
+        ...BUCKETS.map(([bucket, label]) => {
+          const group = element("div", "bucket-group");
+          const bars = element("div", "bucket-bars");
+          for (const strategy of STRATEGIES) {
+            const value = scoredMetric(strategy, bucket, "answer_coverage");
+            const bar = element("div", "bucket-bar");
+            bar.style.height = `${Math.max(1, (value ?? 0) * 100)}%`;
+            bar.title =
+              `${STRATEGY_LABELS[strategy]} · ${METRIC_NAMES.answer_coverage}：` +
+              `${value == null ? "未评测" : value.toFixed(3)}`;
+            bar.appendChild(element("b", "", value == null ? "—" : value.toFixed(2)));
+            bars.appendChild(bar);
+          }
+          group.append(bars, bucketCaption(bucket, label));
+          return group;
+        }),
+      );
+    }
+    productionBreakdownTitle.textContent = `混合 + Rerank · ${METRIC_NAMES[selectedGenerationMetric]}`;
+    faithBars.replaceChildren(
+      ...ANSWERABLE_BUCKETS.map(([bucket, label]) => {
+        const value = scoredMetric("hybrid_rerank", bucket, selectedGenerationMetric);
+        const row = element("div", "faith-row");
+        const track = element("div", "faith-track");
+        const fill = element("i");
+        if (selectedGenerationMetric === "answer_coverage") fill.className = "answer-coverage";
+        fill.style.width = value == null ? "0%" : percent(value);
+        track.appendChild(fill);
+        row.append(
+          element("span", "", `${label}（${caseCounts().byBucket[bucket] || 0} 题）`),
+          track,
+          element("span", "", value == null ? "—" : value.toFixed(2)),
+        );
+        return row;
+      }),
+    );
+    document.querySelectorAll("[data-generation-metric]").forEach((button) => {
+      button.classList.toggle("active", button.dataset.generationMetric === selectedGenerationMetric);
+    });
+  }
+
+  function issueKinds(row) {
+    const generationEnabled = report.run?.generation_enabled !== false;
+    const kinds = [];
+    if (row.faithful === false) kinds.push("hallucination");
+    if (row.expected_answerable !== false && Number(row.evidence_coverage ?? 1) < 1) kinds.push("evidence");
+    const answerCoverage = row.coverage_status == null ? row.answer_completeness : row.answer_coverage;
+    if (
+      generationEnabled &&
+      row.generation_status !== "failed" &&
+      row.answer &&
+      row.expected_answerable !== false &&
+      !row.refused &&
+      Number(answerCoverage ?? 1) < 1
+    ) {
+      kinds.push("completeness");
+    }
+    if (
+      generationEnabled &&
+      row.refused != null &&
+      ((row.expected_answerable !== false && row.refused) ||
+        (row.expected_answerable === false && !row.refused))
+    ) {
+      kinds.push("refusal");
+    }
+    return kinds;
+  }
+
+  function issueRows() {
+    return (report.cases || []).filter((row) => row.strategy === "hybrid_rerank" && issueKinds(row).length);
+  }
+
+  function faithReviewBox(row) {
+    const box = element("div", "review-box");
+    const review = faithReviews.get(row.case_id);
+    if (!review?.available) {
+      box.append(element("p", "", `人工复核：暂不可提交。${review?.message || reviewLoadError}`));
+      return box;
+    }
+    box.append(element("p", "", `人工复核：${review.status}（与上方模型判断分开记录，不改评估分数）`));
+    box.append(
+      element(
+        "p",
+        "",
+        "已解决：问题已实际修复；无需解决：人工确认属于裁判误判或不影响回答。请在理由中说明依据。",
+      ),
+    );
+    if (review.resolution) box.append(element("p", "", `上次处置理由：${review.resolution}`));
+    const form = element("form", "review-form");
+    form.dataset.reviewCase = row.case_id;
+    const label = element("label", "", "处置理由（已解决／无需解决必填，最多 300 字）");
+    const reason = element("textarea", "review-reason");
+    reason.name = "resolution";
+    reason.maxLength = 300;
+    reason.value = review.resolution || "";
+    label.appendChild(reason);
+    form.appendChild(label);
+    const buttons = element("div", "review-buttons");
+    for (const status of ["已解决", "无需解决", ...(review.status === "未解决" ? [] : ["未解决"])]) {
+      const button = element("button", "mini-button", status === "未解决" ? "退回未解决" : status);
+      button.type = "submit";
+      button.dataset.reviewStatus = status;
+      buttons.appendChild(button);
+    }
+    form.appendChild(buttons);
+    form.appendChild(element("p", "review-feedback"));
+    box.appendChild(form);
+    return box;
+  }
+
+  function renderIssues(expandedCaseId = null) {
+    const allIssues = issueRows();
+    const filters = [
+      ["all", "全部"],
+      ["hallucination", "回答事实无依据（模型）"],
+      ["evidence", "召回材料要点未命中（字面）"],
+      ["completeness", "最终答案要点未覆盖（模型）"],
+      ["refusal", "拒答判断错误"],
+    ];
+    issueFilters.replaceChildren(
+      ...filters.map(([key, label]) => {
+        const count =
+          key === "all"
+            ? allIssues.length
+            : allIssues.filter((row) => issueKinds(row).includes(key)).length;
+        const button = element(
+          "button",
+          `issue-filter${selectedIssueFilter === key ? " active" : ""}`,
+          `${label} ${count}`,
+        );
+        button.type = "button";
+        button.dataset.issueFilter = key;
+        return button;
+      }),
+    );
+    const issues =
+      selectedIssueFilter === "all"
+        ? allIssues
+        : allIssues.filter((row) => issueKinds(row).includes(selectedIssueFilter));
+    const totalPages = Math.max(1, Math.ceil(issues.length / ISSUE_PAGE_SIZE));
+    selectedIssuePage = Math.min(Math.max(selectedIssuePage, 1), totalPages);
+    const pageStart = (selectedIssuePage - 1) * ISSUE_PAGE_SIZE;
+    const pageIssues = issues.slice(pageStart, pageStart + ISSUE_PAGE_SIZE);
+    issueCount.textContent = `当前 ${issues.length} 题 / 共 ${allIssues.length} 题`;
+    const flagged = allIssues.filter((row) => row.faithful === false);
+    const reviewed = flagged
+      .map((row) => faithReviews.get(row.case_id))
+      .filter((state) => state?.available);
+    const statusCount = (status) => reviewed.filter((state) => state.status === status).length;
+    reviewNotice.textContent =
+      reviewLoadError ||
+      `仅 ${flagged.length} 道事实依据问题可人工处置：未解决 ${statusCount("未解决")}、` +
+        `已解决 ${statusCount("已解决")}、无需解决 ${statusCount("无需解决")}` +
+        `${reviewed.length < flagged.length ? `；另有 ${flagged.length - reviewed.length} 道记录与报告未匹配，暂不可提交` : ""}` +
+        "。原始模型分数不变。";
+    issueList.replaceChildren(
+      ...pageIssues.map((row) => {
+        const card = element("details", "issue");
+        card.open = row.case_id === expandedCaseId;
+        const summary = element("summary");
+        summary.append(element("span", "issue-title", `${row.case_id} · ${row.query}`));
+        for (const kind of issueKinds(row)) {
+          const labels = {
+            hallucination: "疑似编造",
+            evidence: "材料字面未命中",
+            completeness: "答案要点未覆盖",
+            refusal: "拒答判断错误",
+          };
+          summary.append(element("span", `chip${kind === "hallucination" ? " bad" : ""}`, labels[kind]));
+        }
+        const body = element("div", "issue-body");
+        body.append(
+          element(
+            "p",
+            "",
+            `${METRIC_NAMES.evidence_coverage}：${percent(row.evidence_coverage)}；` +
+              `${METRIC_NAMES.answer_coverage}：${percent(row.answer_coverage)}；` +
+              `${METRIC_NAMES.faithfulness}：${percent(row.faithfulness)}`,
+          ),
+          element(
+            "p",
+            "",
+            `回答事实依据核查理由：${row.faithfulness_reason || "本题未给出理由或未执行核查"}`,
+          ),
+          element("div", "answer", row.answer || (row.refused ? "本题已拒答" : "没有生成答案")),
+        );
+        const citationCount = (row.citations || []).length;
+        body.appendChild(
+          element(
+            "p",
+            "",
+            `证据链：召回 ${citationCount} 条，Ground Truth ${(row.relevant_chunk_ids || []).join(", ") || "无（库外题）"}`,
+          ),
+        );
+        if (row.faithful === false) body.appendChild(faithReviewBox(row));
+        const actions = element("div", "issue-actions");
+        const inspect = element("button", "mini-button", "查看四路证据");
+        inspect.type = "button";
+        inspect.dataset.inspectCase = row.case_id;
+        actions.appendChild(inspect);
+        body.appendChild(actions);
+        card.append(summary, body);
+        return card;
+      }),
+    );
+    if (!issues.length) issueList.appendChild(element("div", "empty", "这个筛选项下没有需要复查的问题。"));
+    if (!issues.length) {
+      issuePagination.replaceChildren();
+      return;
+    }
+    const status = element(
+      "span",
+      "page-status",
+      `第 ${selectedIssuePage} / ${totalPages} 页 · ` +
+        `${pageStart + 1}-${Math.min(pageStart + ISSUE_PAGE_SIZE, issues.length)} / ${issues.length} 条`,
+    );
+    const buttons = element("div", "page-buttons");
+    const previous = element("button", "page-button", "上一页");
+    previous.type = "button";
+    previous.dataset.issuePage = String(selectedIssuePage - 1);
+    previous.disabled = selectedIssuePage === 1;
+    buttons.appendChild(previous);
+    for (let page = 1; page <= totalPages; page += 1) {
+      const button = element(
+        "button",
+        `page-button${page === selectedIssuePage ? " active" : ""}`,
+        String(page),
+      );
+      button.type = "button";
+      button.dataset.issuePage = String(page);
+      button.setAttribute("aria-label", `第 ${page} 页`);
+      button.setAttribute("aria-current", page === selectedIssuePage ? "page" : "false");
+      buttons.appendChild(button);
+    }
+    const next = element("button", "page-button", "下一页");
+    next.type = "button";
+    next.dataset.issuePage = String(selectedIssuePage + 1);
+    next.disabled = selectedIssuePage === totalPages;
+    buttons.appendChild(next);
+    issuePagination.replaceChildren(status, buttons);
+  }
+
+  function renderFullTable() {
+    const bestMrr = Math.max(...STRATEGIES.map((strategy) => Number(report.strategies?.[strategy]?.mrr || 0)));
+    const generatedStrategies = reportGeneratedStrategies();
+    const metricCell = (value, blank = false, asPercent = false) =>
+      element(
+        "td",
+        "table-number",
+        blank || value == null
+          ? "—"
+          : asPercent
+            ? `${(Number(value) * 100).toFixed(2)}%`
+            : Number(value).toFixed(3),
+      );
+    summaryTable.replaceChildren(
+      ...STRATEGIES.map((strategy) => {
+        const values = report.strategies?.[strategy] || {};
+        const generated = generatedStrategies.has(strategy);
+        const row = element("tr", Number(values.mrr || 0) === bestMrr ? "best-row" : "");
+        row.append(
+          element("td", "", STRATEGY_LABELS[strategy]),
+          metricCell(scoredMetric(strategy, "A_policy", "mrr")),
+          metricCell(scoredMetric(strategy, "B_model", "mrr")),
+          metricCell(scoredMetric(strategy, "C_colloquial", "mrr")),
+          metricCell(scoredMetric(strategy, "E_multi", "mrr")),
+          metricCell(scoredMetric(strategy, "F_identifier", "mrr")),
+          metricCell(values.mrr),
+          metricCell(values.recall_at_k),
+          metricCell(values.evidence_coverage),
+          metricCell(values.answer_coverage, !generated),
+          metricCell(values.faithfulness, !generated || strategy !== "hybrid_rerank"),
+          metricCell(values.refusal_accuracy, !generated, true),
+          metricCell(values.false_refusal_rate, !generated, true),
+        );
+        return row;
+      }),
+    );
+    const productionBuckets = ANSWERABLE_BUCKETS.map(([bucket, label]) => [
+      label,
+      scoredMetric("hybrid_rerank", bucket, "mrr"),
+    ]).filter(([, value]) => value != null);
+    const lowest = productionBuckets.sort((left, right) => left[1] - right[1])[0];
+    tableReading.textContent =
+      "绿色行仅标记总体 MRR 最高路线，不代表所有指标都最好。" +
+      `${lowest ? `混合 + Rerank 最弱检索分桶为${lowest[0]}（MRR ${lowest[1].toFixed(3)}）。` : "本轮没有可比较的检索分桶。"}` +
+      `召回材料与最终答案是两个不同评估对象；库外正确拒答率分母是 ${caseCounts().refusal} 道库外题，` +
+      `库内误拒答率分母是 ${caseCounts().answerable} 道可回答题。`;
+  }
+
+  function renderSummary() {
+    const production = report.strategies?.hybrid_rerank || {};
+    const ranked = STRATEGIES.filter((strategy) => report.strategies?.[strategy])
+      .map((strategy) => [strategy, Number(report.strategies[strategy].mrr || 0)])
+      .sort((left, right) => right[1] - left[1]);
+    const [bestStrategy, bestMrr] = ranked[0] || ["hybrid_rerank", 0];
+    const generationEnabled = report.run?.generation_enabled !== false;
+    const answerableRows = (report.cases || []).filter(
+      (row) =>
+        row.strategy === "hybrid_rerank" && row.expected_answerable !== false && row.refused != null,
+    );
+    const refusedAnswerable = answerableRows.filter((row) => row.refused).length;
+    const refusalRows = (report.cases || []).filter(
+      (row) =>
+        row.strategy === "hybrid_rerank" && row.expected_answerable === false && row.refused != null,
+    );
+    const correctlyRefused = refusalRows.filter((row) => row.refused).length;
+    const falseRefusalRate =
+      production.false_refusal_rate == null
+        ? "未评上"
+        : `${(Number(production.false_refusal_rate) * 100).toFixed(2)}%`;
+    const cards = [
+      [`最佳整体 MRR · ${STRATEGY_LABELS[bestStrategy]}`, bestMrr.toFixed(3), "四条路线中，总体证据排序最高。"],
+      [
+        "库内误拒答率",
+        generationEnabled ? falseRefusalRate : "未运行",
+        answerableRows.length
+          ? `${refusedAnswerable}/${answerableRows.length} 道可回答题被错误拒绝；越低越好。`
+          : "可回答题被错误拒绝的比例；越低越好。",
+      ],
+      [
+        "库外问题拒答",
+        generationEnabled ? percent(production.refusal_accuracy) : "未运行",
+        refusalRows.length
+          ? `${correctlyRefused}/${refusalRows.length} 道库外题正确拒绝；越高越好。`
+          : "知识库没有答案时正确拒绝的比例；越高越好。",
+      ],
+    ];
+    metrics.replaceChildren(
+      ...cards.map(([name, value, hint]) => {
+        const card = element("article", "metric");
+        card.append(
+          element("span", "metric-name", name),
+          element("strong", "metric-value", value),
+          element("small", "metric-hint", hint),
+        );
+        return card;
+      }),
+    );
+
+    strategyLegend.replaceChildren(
+      ...STRATEGIES.map((strategy, index) => {
+        const item = element("span", "");
+        const swatch = element("i", "");
+        swatch.style.background = STRATEGY_COLORS[index];
+        item.append(swatch, document.createTextNode(STRATEGY_LABELS[strategy]));
+        return item;
+      }),
+    );
+    renderBucketChart();
+    renderGenerationQuality();
+    renderIssues();
+    renderFullTable();
+  }
+
+  function groupedCases() {
+    const groups = new Map();
+    for (const item of report.cases || []) {
+      if (!groups.has(item.case_id)) groups.set(item.case_id, []);
+      groups.get(item.case_id).push(item);
+    }
+    return groups;
+  }
+
+  function renderCase(caseId) {
+    const rows = groupedCases().get(caseId) || [];
+    if (!rows.length) {
+      strategyGrid.replaceChildren(element("div", "empty", "没有该题的评估结果"));
+      return;
+    }
+    const base = rows[0];
+    caseSummary.replaceChildren();
+    const title = element("h3", "", `${base.case_id} · ${base.query}`);
+    const meta = element("div", "case-meta");
+    meta.append(
+      element("span", "chip", `类型 ${base.query_type}`),
+      element("span", "chip", `难度 ${base.difficulty}`),
+      element(
+        "span",
+        "chip",
+        `按章节与标准要点自动匹配 ${base.relevant_chunk_ids.length} 块：` +
+          `${base.relevant_chunk_ids.join(", ") || "无（库外问题）"}`,
+      ),
+    );
+    caseSummary.append(title, meta);
+
+    const byStrategy = Object.fromEntries(rows.map((row) => [row.strategy, row]));
+    strategyGrid.replaceChildren(
+      ...STRATEGIES.map((strategy) => {
+        const row = byStrategy[strategy];
+        const card = element("article", "strategy-card");
+        card.appendChild(element("h3", "", STRATEGY_LABELS[strategy]));
+        const body = element("div", "card-body");
+        if (!row) {
+          body.appendChild(element("div", "empty", "无数据"));
+          card.appendChild(body);
+          return card;
+        }
+        const generatedAnswer = Boolean(row.answer);
+        const rowMetrics = element("div", "coverage");
+        const answerCoverage = !generatedAnswer
+          ? "未运行"
+          : hasSemanticCoverage()
+            ? percent(row.answer_coverage)
+            : "旧报告未评测";
+        const factChecked =
+          row.faithfulness_status === "completed" ||
+          (row.faithfulness_status == null && row.faithful != null && generatedAnswer);
+        const metricLines = [
+          `前 5 条必需证据组命中率（Recall@5）：${percent(row.recall_at_k)}`,
+          `必需证据组平均倒数排名（RR）：${row.reciprocal_rank == null ? "未评测" : Number(row.reciprocal_rank).toFixed(3)}`,
+          `${METRIC_NAMES.evidence_coverage}：${percent(row.evidence_coverage)}`,
+          `${METRIC_NAMES.answer_coverage}：${answerCoverage}`,
+          `${METRIC_NAMES.faithfulness}：` +
+            `${factChecked ? percent(row.faithfulness) : row.faithfulness_status === "failed" ? "核查失败" : "未运行"}`,
+        ];
+        rowMetrics.replaceChildren(...metricLines.map((line) => element("span", "", line)));
+        body.appendChild(rowMetrics);
+        const list = element("ol", "ranking");
+        const relevant = new Set(row.relevant_chunk_ids || []);
+        for (const source of row.citations || []) {
+          const item = element("li", `evidence${relevant.has(source.chunk_id) ? " hit" : ""}`);
+          const chunkAnswer = element("p", "evidence-answer");
+          chunkAnswer.append(
+            element("strong", "", "知识块回答"),
+            document.createTextNode(String(source.answer || "").trim() || "该知识块没有回答正文"),
+          );
+          item.append(
+            element(
+              "span",
+              "evidence-rank",
+              `#${source.n} · chunk ${source.chunk_id}${relevant.has(source.chunk_id) ? " · 命中 GT" : ""}`,
+            ),
+            element("strong", "evidence-title", source.question || "未标问题"),
+            element("span", "evidence-path", source.section_path || "未标章节"),
+            chunkAnswer,
+          );
+          list.appendChild(item);
+        }
+        if (!list.children.length) list.appendChild(element("li", "evidence", "没有召回证据"));
+        body.appendChild(list);
+        const answer = element(
+          "div",
+          "answer",
+          row.answer ||
+            (row.generation_status === "failed"
+              ? `生成答案时出错：${row.generation_error || "原因未记录"}`
+              : "没有生成答案"),
+        );
+        answer.prepend(element("strong", "", row.refused ? "明确拒答\n" : "生成答案\n"));
+        body.appendChild(answer);
+        body.appendChild(
+          element(
+            "div",
+            "case-meta",
+            factChecked
+              ? `回答事实依据核查：${row.faithful ? "有据" : "疑似编造，待人工复核"} · ${row.faithfulness_reason || "未给理由"}`
+              : `回答事实依据核查：${row.faithfulness_status === "failed" ? "核查失败" : "未运行"}`,
+          ),
+        );
+        card.appendChild(body);
+        return card;
+      }),
+    );
+  }
+
+  function renderReport(payload) {
+    report = payload;
+    counts = null;
+    document.body.classList.remove("report-missing");
+    emptyState.hidden = true;
+    rerunCopy.textContent = `运行 ${caseCounts().total} 道题 × 4 条检索路线；默认四路线生成并评估答案覆盖度，取消勾选可只生成混合 + Rerank 答案以节省模型调用。`;
+    faithReviews = new Map();
+    reviewLoadError = "正在读取人工复核记录…";
+    renderMeta();
+    renderSummary();
+    const groups = groupedCases();
+    casePicker.replaceChildren(
+      ...Array.from(groups.entries()).map(([caseId, rows]) => {
+        const option = document.createElement("option");
+        option.value = caseId;
+        option.textContent = `${caseId} · ${rows[0]?.query || ""}`;
+        return option;
+      }),
+    );
+    if (casePicker.value) renderCase(casePicker.value);
+    const caseCount = report.dataset?.total_cases || groups.size;
+    const base =
+      `已加载 ${caseCount} 道独立题，${report.cases?.length || 0} 条策略结果` +
+      `（${Object.keys(report.strategies || {}).length} 路 × ${caseCount} 题）。`;
+    if (report.dataset_alignment?.status === "stale") {
+      setStatus(
+        `当前评测题已修改，页面显示的是旧题目的历史分数（至少 ${report.dataset_alignment.changed_cases} 题标注已变）；请重新运行评估后再据此验收。`,
+        true,
+      );
+    } else {
+      setStatus(
+        hasSemanticCoverage()
+          ? `${base}绿色知识块表示命中标准相关知识块。`
+          : `${base}这是旧口径报告，不含答案语义覆盖度；新评估完成前请勿将缺失指标当成 0 分。`,
+      );
+    }
+  }
+
+  async function loadReport() {
+    const response = await fetch("/v1/rag-eval/report", {
+      cache: "no-store",
+      headers: adminHeaders(),
+    });
+    if (response.status === 404) {
+      document.body.classList.add("report-missing");
+      emptyState.hidden = false;
+      setStatus("尚未生成评估报告。");
+      return;
+    }
+    if (!response.ok) {
+      throw new Error(await responseError(response, `读取报告失败（${response.status}）`));
+    }
+    renderReport(await response.json());
+    await loadFaithReviews();
+  }
+
+  async function loadFaithReviews() {
+    const sourceReport = report;
+    try {
+      const response = await fetch("/v1/rag-eval/faith-cases", {
+        cache: "no-store",
+        headers: adminHeaders(),
+      });
+      if (!response.ok) {
+        throw new Error(await responseError(response, `人工复核记录暂不可用（${response.status}）`));
+      }
+      const payload = await response.json();
+      if (report !== sourceReport) return;
+      faithReviews = new Map(Object.entries(payload.cases || {}));
+      reviewLoadError = "";
+    } catch (error) {
+      if (report !== sourceReport) return;
+      faithReviews = new Map();
+      reviewLoadError = `${error.message || "人工复核记录暂不可用"}；报告仍可查看，暂不能提交处置。`;
+    }
+    renderIssues();
+  }
+
+  casePicker.addEventListener("change", () => renderCase(casePicker.value));
+  document.querySelector("#metricTabs").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-metric]");
+    if (!button) return;
+    selectedMetric = button.dataset.metric;
+    renderBucketChart();
+  });
+  document.querySelector("#generationTabs").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-generation-metric]");
+    if (!button) return;
+    selectedGenerationMetric = button.dataset.generationMetric;
+    renderGenerationQuality();
+  });
+  issueFilters.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-issue-filter]");
+    if (!button) return;
+    selectedIssueFilter = button.dataset.issueFilter;
+    selectedIssuePage = 1;
+    renderIssues();
+  });
+  issuePagination.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-issue-page]");
+    if (!button || button.disabled) return;
+    selectedIssuePage = Number(button.dataset.issuePage);
+    renderIssues();
+    issueFilters.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+  issueList.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-inspect-case]");
+    if (!button) return;
+    casePicker.value = button.dataset.inspectCase;
+    renderCase(casePicker.value);
+    caseSummary.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+  issueList.addEventListener("submit", async (event) => {
+    const form = event.target.closest("[data-review-case]");
+    if (!form) return;
+    event.preventDefault();
+    const evalId = form.dataset.reviewCase;
+    const review = faithReviews.get(evalId);
+    const status = event.submitter?.dataset.reviewStatus;
+    const resolution = form.elements.resolution.value.trim();
+    const feedback = form.querySelector(".review-feedback");
+    if (!review?.available || !status) return;
+    if (status !== "未解决" && !resolution) {
+      feedback.textContent = "请先填写处置理由。";
+      form.elements.resolution.focus();
+      return;
+    }
+    form.querySelectorAll("button").forEach((button) => {
+      button.disabled = true;
+    });
+    feedback.textContent = "正在保存…";
+    try {
+      const response = await fetch(`/v1/rag-eval/faith-cases/${encodeURIComponent(evalId)}/status`, {
+        method: "POST",
+        headers: adminHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({
+          status,
+          resolution: status === "未解决" ? null : resolution,
+          expected_seen_count: review.seen_count,
+          expected_status: review.status,
+          expected_resolution: review.resolution,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(
+          response.status === 409
+            ? "记录已被更新或评估已重跑，请刷新页面再复核。"
+            : await responseError(response, `保存失败（${response.status}），请检查后重试。`),
+        );
+      }
+      faithReviews.set(evalId, await response.json());
+      renderIssues(evalId);
+    } catch (error) {
+      feedback.textContent = error.message || "保存失败，请重试。";
+      form.querySelectorAll("button").forEach((button) => {
+        button.disabled = false;
+      });
+    }
+  });
+
+  async function rerunEvaluation() {
+    const runFullGeneration = fullGeneration.checked;
+    const generationMode = runFullGeneration
+      ? "四条路线均生成和裁判答案，模型调用显著增加"
+      : "仅对混合重排路线生成和裁判答案";
+    const scope = report ? `${caseCounts().total} 题` : "全部评测题";
+    if (!window.confirm(`将对${scope}运行四种检索策略，${generationMode}。确定继续吗？`)) return;
+    rerunButtons.forEach((button) => {
+      button.disabled = true;
+      button.textContent = "评估运行中…";
+    });
+    setStatus(`正在运行${scope}评测：四策略检索 + ${generationMode}。请保持页面打开。`, false);
+    try {
+      const response = await fetch("/v1/rag-eval/run", {
+        method: "POST",
+        headers: adminHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({
+          confirm_external_model_usage: true,
+          full_generation: runFullGeneration,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(await responseError(response, `评估失败（${response.status}）`));
+      }
+      renderReport(await response.json());
+      await loadFaithReviews();
+    } catch (error) {
+      setStatus(error.message || "评估失败，请检查服务日志。", true);
+    } finally {
+      rerunButtons.forEach((button) => {
+        button.disabled = false;
+        button.textContent = "重新运行评估";
+      });
+    }
+  }
+  rerunButtons.forEach((button) => button.addEventListener("click", rerunEvaluation));
+
+  loadReport().catch((error) => setStatus(error.message || "读取报告失败", true));
+})();
