@@ -1,2 +1,5 @@
+* text=auto eol=lf
+*.ps1 text eol=crlf
+
 # Preserve published browser distributions and their recorded SHA-256 on Windows.
 app/static/vendor/*.js -text

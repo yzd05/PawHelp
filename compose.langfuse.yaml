@@ -3,7 +3,7 @@
 name: pawhelp-observability
 services:
   langfuse-worker:
-    image: docker.langfuse.com/langfuse/langfuse-worker:4
+    image: docker.langfuse.com/langfuse/langfuse-worker:4.54.0
     restart: unless-stopped
     depends_on: &dependencies
       postgres: {condition: service_healthy}
@@ -43,7 +43,7 @@ services:
       LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: media/
       LANGFUSE_S3_BATCH_EXPORT_ENABLED: "false"
   langfuse-web:
-    image: docker.langfuse.com/langfuse/langfuse:4
+    image: docker.langfuse.com/langfuse/langfuse:4.54.0
     restart: unless-stopped
     depends_on: *dependencies
     ports: ["127.0.0.1:3000:3000"]
@@ -53,7 +53,7 @@ services:
       LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://localhost:9090
       LANGFUSE_S3_MEDIA_UPLOAD_INTERNAL_ENDPOINT: http://minio:9000
   postgres:
-    image: postgres:17
+    image: postgres:17.11
     restart: unless-stopped
     environment: {POSTGRES_USER: postgres, POSTGRES_PASSWORD: "${LF_POSTGRES_PASSWORD:?configure .env.langfuse}", POSTGRES_DB: postgres, TZ: UTC, PGTZ: UTC}
     volumes: ["postgres_data:/var/lib/postgresql/data"]
@@ -66,14 +66,14 @@ services:
     volumes: ["clickhouse_data:/var/lib/clickhouse", "clickhouse_logs:/var/log/clickhouse-server"]
     healthcheck: {test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1"], interval: 5s, timeout: 5s, retries: 10}
   redis:
-    image: redis:7
+    image: redis:7.4.11
     restart: unless-stopped
     command: ["redis-server", "--requirepass", "${LF_REDIS_PASSWORD:?configure .env.langfuse}", "--maxmemory-policy", "noeviction"]
     volumes: ["redis_data:/data"]
     healthcheck: {test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep PONG"], interval: 5s, timeout: 5s, retries: 10}
     environment: {REDIS_PASSWORD: "${LF_REDIS_PASSWORD:?configure .env.langfuse}"}
   minio:
-    image: cgr.dev/chainguard/minio
+    image: quay.io/minio/minio:RELEASE.2025-04-08T15-41-24Z
     restart: unless-stopped
     entrypoint: sh
     command: -c 'mkdir -p /data/langfuse && minio server --address ":9000" --console-address ":9001" /data'

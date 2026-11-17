@@ -4,6 +4,10 @@ on:
   push:
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -30,6 +34,24 @@ jobs:
   tests:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          TZ: UTC
+          MYSQL_ROOT_PASSWORD: root_ci_password
+          MYSQL_DATABASE: pawhelp_test
+          MYSQL_USER: pawhelp_test
+          MYSQL_PASSWORD: pawhelp_test_password
+        ports:
+          - 3306:3306
+        # GitHub Actions passes `options` to `docker create` before the image name;
+        # TZ=UTC plus the explicit SET GLOBAL step below enforces --default-time-zone=+00:00.
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot_ci_password"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
     steps:
       - uses: actions/checkout@v7
         with:
@@ -37,7 +59,17 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
+      - name: Enforce MySQL UTC time zone (--default-time-zone=+00:00)
+        run: |
+          mysql --protocol=TCP -h 127.0.0.1 -P 3306 -uroot -proot_ci_password \
+            -e "SET GLOBAL time_zone = '+00:00'; SELECT @@global.time_zone, @@character_set_server;"
       - name: Install locked dependencies
         run: uv sync --locked
-      - name: Offline regression tests
-        run: uv run pytest
+      - name: Migrate disposable test database
+        env:
+          DATABASE_URL: mysql+asyncmy://pawhelp_test:pawhelp_test_password@127.0.0.1:3306/pawhelp_test?charset=utf8mb4
+        run: uv run --locked alembic upgrade head
+      - name: Regression and MySQL integration tests
+        env:
+          TEST_DATABASE_URL: mysql+asyncmy://pawhelp_test:pawhelp_test_password@127.0.0.1:3306/pawhelp_test?charset=utf8mb4
+        run: uv run --locked pytest

@@ -5,39 +5,40 @@
 ## 一键启动
 
 ```powershell
-uv run --locked python -m scripts.start
+# 首次运行推荐加 --bootstrap 自动完成 Markdown 知识导入与 Milvus 向量化
+uv run --locked pawhelp-start --bootstrap
+# 等价命令：uv run --locked python -m scripts.start --bootstrap
 ```
 
-依次：`docker compose up -d --wait`（MySQL、etcd、MinIO、Milvus）→ `alembic upgrade head` → 物流 MCP（8101）、售后 MCP（8102）、主题分类器（8110，未训练出 `data/topic-classifier/model` 时跳过）、主应用（8000）。子进程直接用当前虚拟环境的 Python 启动，日志写入 `.runtime/logs/<服务>.log`；某个服务意外退出时打印其日志末尾并停止其余服务。端口已被占用时沿用正在运行的服务。Ctrl+C 停止本脚本启动的进程，容器继续运行（需要时 `docker compose stop`）。`--no-docker`、`--no-mcp`、`--no-classifier` 跳过对应部分。
+依次：`docker compose up -d --wait`（MySQL、etcd、MinIO、Milvus）→ `alembic upgrade head` →（`--bootstrap` 且知识库尚未导入时自动串联 `scripts.ingest_knowledge` 与 `scripts.vectorize_knowledge`）→ 物流 MCP（默认 8101，自动从 `MCP_LOGISTICS_URL` 解析端口并注入 `MCP_LOGISTICS_PORT`）、售后 MCP（默认 8102，自动注入 `MCP_AFTERSALES_PORT`）、主题分类器（8110，未训练出 `data/topic-classifier/model` 时跳过）、主应用（8000）。子进程直接用当前虚拟环境的 Python 启动，日志写入 `.runtime/logs/<服务>.log`；某个服务意外退出时打印其日志末尾并停止其余服务。端口已被占用时沿用正在运行的服务。Ctrl+C 停止本脚本启动的进程，容器继续运行（需要时 `docker compose stop`）。`--no-docker`、`--no-mcp`、`--no-classifier` 跳过对应部分。
 
-主应用启动后在后台加载并预热 BGE-M3 与重排模型，页面先可用；`GET /health` 的 `knowledge_models` 为 `loading`、`ready` 或 `failed`。预热完成前到达的提问会等待加载完成，不会重复加载。
+主应用启动后在后台加载并预热 BGE-M3 与重排模型（首次运行会下载约 **3.3 GB** BGE 权重，国内网络可配置 `HF_ENDPOINT=https://hf-mirror.com` 或 `HTTPS_PROXY`），页面先可用；`GET /health` 的 `knowledge_models` 为 `loading`、`ready` 或 `failed`。预热完成前到达的提问会等待加载完成，不会重复加载。
 
 ## 安装、迁移和主应用（分步）
 
 ```powershell
 uv sync --locked --all-extras
-# 仅首次：已有 .env 不要覆盖
+# 仅首次：已有 .env 不要覆盖（Linux/macOS 用 cp .env.example .env）
 Copy-Item .env.example .env
-docker compose up -d mysql etcd minio milvus
-uv run alembic upgrade head
-uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
+docker compose up -d --wait mysql etcd minio milvus
+uv run --locked alembic upgrade head
+uv run --locked uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-已安装环境可以直接使用 `./.venv/Scripts/python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000`。所有后台包括 `/topics` 和 `/acceptance` 都在 8000。
+已安装环境可以直接使用 `./.venv/Scripts/python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000`（Linux/macOS 为 `./.venv/bin/python -m uvicorn ...`）。所有后台包括 `/topics` 和 `/acceptance` 都在 8000。
 
-`uv.lock` 只记录 pypi.org 和 download.pytorch.org 的下载地址，本地和 CI 共用这一份，不要在 `pyproject.toml` 里加镜像 index。uv 按锁文件里的地址安装，`UV_DEFAULT_INDEX`、`UV_INDEX_URL` 或用户级 `uv.toml` 里配置的镜像（如清华源）不会加速 `uv sync`，反而会让 `--locked` 报锁文件需要更新（uv 0.11.18 实测）。在本仓库执行 uv 命令前先清掉这些变量；国内网络慢时用 `HTTPS_PROXY` 走代理。`uv lock` 同样要在没有镜像变量的环境里运行，否则锁文件会被改写成镜像地址：
+`uv.lock` 只记录 `pypi.org` 和 `download.pytorch.org` 的下载地址（Windows/Linux 安装 `cu130` 版 `torch`，macOS 自动使用 PyPI 官方 wheel），本地和 CI 共用这一份，不要在 `pyproject.toml` 里加镜像 index。uv 按锁文件里的地址安装，`UV_DEFAULT_INDEX`、`UV_INDEX_URL` 或用户级 `uv.toml` 里配置的镜像（如清华源）不会加速 `uv sync`，反而会让 `--locked` 报锁文件需要更新（uv 0.11.18 实测）。在本仓库执行 uv 命令前先清掉这些变量；国内网络慢时用 `HTTPS_PROXY` 走代理。`uv lock` 同样要在没有镜像变量的环境里运行，否则锁文件会被改写成镜像地址：
 
 ```powershell
 Remove-Item Env:UV_DEFAULT_INDEX, Env:UV_INDEX_URL -ErrorAction SilentlyContinue
 uv sync --locked --all-extras
 ```
 
-`CHAT_BASE_URL`、`OPENAI_MODEL`、`OPENAI_API_KEY` 配置上游模型。`DATABASE_URL` 是数据库凭据，只留在本地 `.env`。`STRUCTURED_OUTPUT_METHOD` 必须由上游支持。示例数据库默认 Docker 3307，不是系统 MySQL 的默认 3306。
+`CHAT_BASE_URL`、`OPENAI_MODEL`、`OPENAI_API_KEY` 配置上游模型；`.env.example` 默认显式设置 `MODEL_CONTEXT_WINDOW=65536` 与 `MODEL_MAX_OUTPUT_TOKENS=1024`，上下文高级预算参数以注释分组附于 `.env.example` 末尾。`DATABASE_URL` 是数据库凭据，只留在本地 `.env`。`STRUCTURED_OUTPUT_METHOD` 必须由上游支持。示例数据库默认 Docker 3307，不是系统 MySQL 的默认 3306。
 
-新安装默认业务库与账号均为 `pawhelp`。已有数据库只执行 Alembic 升级，不执行 DROP 或重新 seed。演示数据初始化命令都是显式离线操作：
+新安装默认业务库与账号均为 `pawhelp`。已有数据库只执行 Alembic 升级（`DATABASE_URL` 已与 LLM 密钥解耦，无 `OPENAI_API_KEY` 也可独立执行迁移），不执行 DROP 或重新 seed。演示订单与知识库初始化命令均为显式离线操作：
 
 ```powershell
-uv run python -m scripts.seed_db
 uv run python -m scripts.seed_demo_orders
 uv run python -m scripts.ingest_knowledge
 uv run python -m scripts.vectorize_knowledge
@@ -49,7 +50,7 @@ uv run python -m scripts.vectorize_knowledge
 
 ## MCP 工具（可选）
 
-`scripts.start` 已包含这两个服务；单独启动时分别在两个终端运行：
+`scripts.start` 已包含这两个服务，并自动将 `MCP_LOGISTICS_URL` / `MCP_AFTERSALES_URL` 中的端口透传至子进程 `MCP_LOGISTICS_PORT` / `MCP_AFTERSALES_PORT`；单独启动时分别在两个终端运行：
 
 ```powershell
 uv run python -m mcp_servers.logistics_server
@@ -79,7 +80,7 @@ uv run python -m scripts.show_context_budget
 uv run python -m scripts.run_intent_evals --runs 3
 ```
 
-上述检索不调用回答生成/裁判；意图评测每题调用 3 次意图识别模型。完整评测、会话挖掘、问题标准化与分类器预标会调用上游模型，费用/数据发送需另行授权。
+上述检索不调用回答生成/裁判；意图评测每题调用 3 次意图识别模型。完整评测、会话挖掘（`scripts.mine_conversations`，强制经知识一致性门禁校验）、问题标准化与分类器预标会调用上游模型，费用/数据发送需另行授权。
 
 ## 验证与安全
 
@@ -89,6 +90,6 @@ uv run python -m scripts.check_sources
 node scripts/check_frontend.cjs
 ```
 
-`pytest` 使用脚本化的假模型和内存检查点，不调用付费模型、不读取本机 `.env`；MySQL 集成测试需要 `TEST_DATABASE_URL` 指向一个已迁移到最新版本的一次性数据库，否则跳过，不要指向业务库 `pawhelp`。后两条只检查源码与配置。CI 运行这三项，不含 MySQL 集成测试。
+`pytest` 使用脚本化的假模型和内存检查点，不调用付费模型、不读取本机 `.env`；MySQL 集成测试需要 `TEST_DATABASE_URL` 指向一个已迁移到最新版本的一次性数据库，否则跳过，不要指向业务库 `pawhelp`。后两条只检查源码与配置。GitHub Actions CI 挂载 `mysql:8.4` 服务容器执行数据库迁移并运行完整 `pytest`（含全部 MySQL 集成测试）及后两项静态检查。
 
 本机后台控制不是公网认证。服务绑定回环地址，不把 8000/8110 直接暴露互联网。凭据与私人数据不上传 GitHub；先检查历史记录再发布。

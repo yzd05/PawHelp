@@ -9,9 +9,9 @@ directly to the public Internet or use it with real customer data.
 There is no login, registration, RBAC, authenticated customer identity or
 multi-tenant isolation. The browser UUID is an anonymous conversation key, not
 an identity credential. A separate management menu is not authorization.
-Some operations enforce loopback/same-origin access; that is not a complete
-security boundary for a public deployment. Reverse proxies are not a substitute
-for authentication and ownership checks.
+Some operations enforce loopback/same-origin access or an explicit `ADMIN_TOKEN`;
+that is not a complete security boundary for a public multi-user deployment.
+Reverse proxies are not a substitute for authentication and ownership checks.
 
 ## Data and external models
 
@@ -27,11 +27,16 @@ for authentication and ownership checks.
 
 ## Reporting a vulnerability
 
-No public repository or private security contact has been configured yet. Until
-one is available, contact the maintainer through the channel that supplied your
-copy. Do not publish exploit details, secrets or customer records in public
-issues. A private reporting channel must be established before public release.
+Please report security vulnerabilities privately via GitHub Private Vulnerability
+Reporting at:
 
-If a secret leaks, revoke/rotate it first. Adding an ignore rule or deleting the
-latest copy does not remove the secret from history. History rewriting requires
-explicit coordination with maintainers and existing clones.
+- <https://github.com/yzd05/PawHelp/security/advisories/new>
+
+Include affected files or endpoints, reproduction steps, impact assessment, and
+any suggested remediation. Do **not** publish exploit details, live credentials,
+or private records in public GitHub issues or pull requests.
+
+If a secret leaks, revoke or rotate it immediately at the provider first. Adding
+a `.gitignore` rule or deleting the file in a new commit does not remove the
+secret from Git history; history rewriting requires explicit coordination with
+maintainers and existing clones.

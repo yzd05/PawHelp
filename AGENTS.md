@@ -4,6 +4,8 @@
 
 Issues and specs are tracked as local Markdown under `.scratch/`. See `docs/agents/issue-tracker.md`.
 
+> **Note for external contributors**: `.scratch/` is untracked local state reserved for local coding agents during development sessions. External contributors and community members should report bugs, propose features, and submit changes via GitHub Issues and Pull Requests following [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ### Triage labels
 
 The repo uses the default mattpocock/skills triage labels. See `docs/agents/triage-labels.md`.

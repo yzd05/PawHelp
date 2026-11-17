@@ -1,5 +1,10 @@
 # PawHelp
 
+[![Source checks](https://github.com/yzd05/PawHelp/actions/workflows/source-checks.yml/badge.svg)](https://github.com/yzd05/PawHelp/actions/workflows/source-checks.yml)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white)](pyproject.toml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Release: v1.0.0](https://img.shields.io/badge/release-v1.0.0-blue.svg)](CHANGELOG.md)
+
 宠物用品电商的智能客服：基于 FastAPI + LangGraph，覆盖知识问答（RAG）、订单与物流查询、退款与工单、多轮会话，以及一套把"答不上的问题"变成知识的运营闭环。
 
 ## 亮点
@@ -58,7 +63,11 @@ flowchart LR
 - **证据门控偏保守**：库外 90 题全部拒答，代价是 17 道可回答题被误拒（13 道重排分低于校准阈值，正确知识块都已召回或部分召回；4 道落在 Jev 的中间带，被大模型核验判为不足）。阈值按线上改写和拆分路径校准为 0.174，阈值附近两类题分数交叠，放宽只会让更多库外题进入模型核验。
 - **评测找出过一个检索缺陷**：查询理解曾把大模型猜测的文档分类当作 Milvus 硬过滤，猜错时整类排除手册和政策；去掉推断过滤后，同一套题的纯检索对比中 hybrid + rerank 的 Recall@5 从 0.938 升到 0.996。
 
-**Jev 证据判定（可选）**：同一份证据交给 TypeSafe Jev（`jev-1.14.0`）回答一个是/否概率问题，在 500 题存档上离线比较（498 题评上，1 题超时）。阈值只用训练题选：P ≤ 0.05 直接拒答、P ≥ 0.60 直接放行，中间交给大模型。全部题 AUC 0.998、Brier 0.048；线上路径的独立验证 77 题中 Jev 直接决定 93.5%，误拒、误放与大模型相同（均为 0）。这 77 题恰好没有库外题，所以另看全部 18 道验证库外题：Jev 给出的最高概率 0.42，低于放行阈值。2026-10-21 以 `jev` 模式跑完整 500 题：通过粗筛的 403 题中 Jev 直接决定 372 题（92.3%；放行 367，拒答 5，拒答的全是库外题），没有造成误拒或误放，大模型核验调用随之减少九成以上；与只用大模型的上一次运行相比，误拒 18 → 17、库外拒答 90/90 不变、Faithfulness 0.995 不变。剩下的偏严误拒都出在交给大模型的中间带，Jev 没有消除它们。默认仍用大模型（`EVIDENCE_JUDGE=llm`），设为 `shadow` 只把 Jev 概率写进日志，设为 `jev` 才由它分流；开启后问题与证据会发送到 TypeSafe。细节见[评测集说明](evals/README.md#jev-证据判定评测)。意图识别也试过用 Jev 代替大模型自报的置信度做复核信号（199 题，44 题经人工审核）：验证集上与现行规则打平，大模型的错判本身就自报高置信，两种信号都拦不住，所以没有接入，见[评测集说明](evals/README.md#jev-意图复核评测)。
+**Jev 证据判定（可选）**：
+
+- **离线阈值校准**：同一份证据交给 TypeSafe Jev（`jev-1.14.0`）回答是/否概率问题（500 题存档评上 498 题，1 题超时；全集 AUC 0.998、Brier 0.048）。仅用训练集选定阈值：`P ≤ 0.05` 直接拒答、`P ≥ 0.60` 直接放行，中间带交由大模型；独立验证 77 题直接决定 93.5%（误拒、误放均为 0），18 道验证库外题最高概率 0.42（均低于放行阈值）。
+- **500 题实测分流收益**：2026-10-21 以 `EVIDENCE_JUDGE=jev` 跑完整 500 题，通过粗筛的 403 题中 Jev 直接决定 372 题（92.3%；放行 367，拒答 5 道全为库外题），**减少九成以上大模型核验调用**；误拒 18 → 17、库外拒答 90/90 与 Faithfulness 0.995 不变（剩余偏严误拒均落在交回大模型的中间带）。默认仍用 `llm`，设为 `shadow` 仅记录概率日志，设为 `jev` 才分流（开启后问题与证据会发送至 TypeSafe），细节见[评测集说明](evals/README.md#jev-证据判定评测)。
+- **意图复核负向实验（未接入）**：在 199 题（44 题人工审核）上测试用 Jev 替代大模型自报置信度做复核信号，验证集与现行规则打平——大模型错判本身倾向自报高置信，两种信号都拦不住，故未接入，见[评测集说明](evals/README.md#jev-意图复核评测)。
 
 查询改写由大模型生成，每次运行分数有小幅波动，上表为最近一次完整运行（2026-10-21）。误拒逐题分析、阈值重校准与核验放宽的重放结果见[评测集说明](evals/README.md#结果解读)。
 
@@ -68,18 +77,29 @@ flowchart LR
 
 需要 Python 3.12、[uv](https://docs.astral.sh/uv/) 和 Docker。
 
-```powershell
+> [!TIP]
+> - **依赖源与平台兼容**：`uv.lock` 固定官方 `pypi.org` 与 `download.pytorch.org` 地址（Windows/Linux 安装 CUDA 13.0 版 `torch`，macOS 自动回落官方 PyPI wheel）。若本机配置了 `UV_INDEX_URL` / `UV_DEFAULT_INDEX` 镜像源，请在 `uv sync --locked` 前先清除这两个环境变量，避免触发锁文件校验报错。
+> - **首次模型权重下载**：首次向量化与服务预热会下载约 **3.3 GB** BGE 权重（`BAAI/bge-m3` 与 `BAAI/bge-reranker-v2-m3`）；国内网络可提前设置 `HF_ENDPOINT=https://hf-mirror.com` 或 `HTTPS_PROXY`。
+
+**一键启动（推荐）**：
+
+```bash
 uv sync --locked
-Copy-Item .env.example .env    # 填写模型地址、模型名和密钥
-docker compose up -d mysql etcd minio milvus
-uv run alembic upgrade head
-uv run python -m scripts.seed_db
-uv run python -m scripts.ingest_knowledge
-uv run python -m scripts.vectorize_knowledge
+cp .env.example .env            # PowerShell: Copy-Item .env.example .env（填写 OPENAI_API_KEY 等模型配置）
+uv run --locked pawhelp-start --bootstrap
+```
+
+**分步初始化与启动**：
+
+```bash
+docker compose up -d --wait mysql etcd minio milvus
+uv run --locked alembic upgrade head
+uv run --locked python -m scripts.ingest_knowledge
+uv run --locked python -m scripts.vectorize_knowledge
 uv run --locked python -m scripts.start
 ```
 
-`scripts.start` 一条命令启动容器、执行迁移，并拉起物流/售后 MCP 服务、主题分类器（有模型时）和主应用，就绪后打印地址；Ctrl+C 停止它启动的全部进程。打开 <http://127.0.0.1:8000/> 聊天，<http://127.0.0.1:8000/admin> 进入后台。首次运行会下载 BGE 模型权重，有 NVIDIA GPU 时自动使用 CUDA；应用启动后在后台预热检索模型，第一句提问不再等模型加载。分步启动见[运行说明](docs/operations.md)。
+`pawhelp-start`（即 `python -m scripts.start`）一条命令等待容器健康检查、执行数据库迁移，加 `--bootstrap` 时自动完成首次知识导入与向量化，随后拉起物流/售后 MCP 服务（自动对齐 `MCP_*_URL` 端口）、主题分类器（有模型时）和主应用；Ctrl+C 停止它启动的全部进程。打开 <http://127.0.0.1:8000/> 聊天，<http://127.0.0.1:8000/admin> 进入后台。有 NVIDIA GPU 时自动使用 CUDA；应用启动后在后台预热检索模型，第一句提问不再等模型加载。更多细节见[运行说明](docs/operations.md)。
 
 | 页面 | 路径 | 用途 |
 |---|---|---|
@@ -93,11 +113,11 @@ uv run --locked python -m scripts.start
 
 ## 测试
 
-```powershell
+```bash
 uv run pytest
 ```
 
-362 个测试，使用脚本化的假模型和内存检查点，不调用付费模型，也不读取本机 `.env`。其中 49 个 MySQL 集成测试需要设置 `TEST_DATABASE_URL`，指向一个已迁移到最新版本的一次性数据库，否则跳过。CI 运行离线测试和源码检查。
+测试套件使用脚本化的假模型和内存检查点，不调用付费模型，也不读取本机 `.env`。其中 MySQL 集成测试需要设置 `TEST_DATABASE_URL`，指向一个已迁移到最新版本的一次性测试数据库，未设置时自动跳过。GitHub Actions CI 会挂载 `mysql:8.4` 服务容器执行无密钥 `alembic upgrade head` 迁移并运行全量 `pytest`（含全部 MySQL 集成测试）以及源码与前端语法检查。
 
 ## 项目结构
 

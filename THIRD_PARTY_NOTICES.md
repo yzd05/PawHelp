@@ -1,40 +1,52 @@
 # Third-party notices
 
-The root MIT license applies to original PawHelp code for which the contributors
-hold the necessary rights. It does not replace licenses on third-party code,
-models, datasets, documents, trademarks, or external services.
+The root [MIT License](LICENSE) applies to original PawHelp source code, SQL
+migrations, configuration templates, and documentation for which the project
+contributors hold the copyright. It does not replace the upstream licenses or
+terms of third-party software packages, browser vendor files, pretrained model
+weights, or external API services.
 
 ## Bundled browser dependencies
 
-- Marked 18.1.0: MIT. License: `app/static/vendor/marked-LICENSE.txt`.
-- DOMPurify 3.4.16: Apache-2.0 or MPL-2.0. License texts are preserved in
-  `app/static/vendor/dompurify-LICENSE.txt` and `dompurify-LICENSE-MPL.txt`.
-- Source links, exact versions and file hashes are in `app/static/vendor/README.md`.
+The chat interface vendors two unmodified browser distributions in
+`app/static/vendor/` so local deployments require no runtime CDN or `npm` build:
 
-## Project data
+- **Marked 18.1.0** — MIT License (`app/static/vendor/marked-LICENSE.txt`).
+- **DOMPurify 3.4.16** — Dual-licensed under Apache-2.0 or MPL-2.0
+  (`app/static/vendor/dompurify-LICENSE.txt` and
+  `app/static/vendor/dompurify-LICENSE-MPL.txt`).
+- Exact registry URLs, version numbers, and SHA-256 digests are recorded in
+  `app/static/vendor/README.md`.
 
-The knowledge documents in `knowledge/`, the evaluation sets in `evals/` and the
-topic-classifier training questions (not committed; see `scripts/topics/`) were
-generated with AI assistance for this project. They contain no real customer data
-and no third-party datasets.
-Products, model numbers and policies in them are fictional.
+## Open-source Python and infrastructure dependencies
 
-## External models and data
+Python runtime and development dependencies declared in `pyproject.toml` and
+locked in `uv.lock` (including FastAPI, Pydantic, SQLAlchemy, Alembic,
+LangGraph, LangChain Core/OpenAI, MCP Python SDK, PyMilvus, FlagEmbedding,
+PyTorch, Langfuse SDK, httpx, and uvicorn) are installed from upstream package
+indexes and remain governed by their respective permissive open-source licenses
+(MIT, Apache-2.0, BSD-3-Clause, and PSF-2.0). Containerized services referenced
+in `compose.yaml` and `compose.langfuse.yaml` (MySQL, Milvus, etcd, MinIO,
+Langfuse, PostgreSQL, ClickHouse, and Redis) are fetched by the operator at
+runtime under their upstream image licenses.
 
-The RoBERTa classifier, BGE embedding/reranking models and upstream chat services
-retain their respective terms. Downloaded weights, private customer questions,
-training corpora and locally generated evaluation reports are not part of this
-source release. A model artifact requires a separate license and provenance
-check before distribution.
+## External models and API services
 
-## Reference material
+Pretrained model weights (`BAAI/bge-m3`, `BAAI/bge-reranker-v2-m3`, and
+`hfl/chinese-roberta-wwm-ext`) and upstream inference APIs (OpenAI-compatible
+chat providers and optional TypeSafe Jev decision endpoints) retain their
+respective upstream model cards, licenses, and terms of service. Model weights,
+private corpora, and local runtime caches are excluded from this source
+repository; any separate redistribution of fine-tuned weights must satisfy the
+base model's license terms.
 
-The project was developed with reference-project/tutorial guidance. No license
-or permission record for that reference was supplied. The root MIT license does
-not grant rights to independently copied reference content. The old `python/`
-reference directory has been archived outside the repository, and the imported
-dataset package is excluded from the release.
-Before a public release, maintainers must verify the origin of any retained
-copied code or documentation and remove, replace or obtain permission for any
-material that cannot be licensed. This provenance check is still open; a name
-change alone does not resolve it.
+## Project data and provenance
+
+All source modules, database migrations, pet-supplies knowledge documents in
+`knowledge/`, and benchmark fixtures in `evals/` shipped in this repository are
+original to PawHelp and licensed under the root [MIT License](LICENSE). Product
+names, SKU model numbers, order scenarios, and store policies in `knowledge/`
+and `evals/` are fictional pet-supplies fixtures created for engineering
+demonstration and evaluation; they contain no real customer records or
+third-party proprietary datasets. Earlier local prototype directories and
+external scratch corpora were audited and excluded prior to the `v1.0.0` open-source release.

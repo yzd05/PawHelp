@@ -1,88 +1,27 @@
-"""Executable database lifecycle scripts without a real networked MySQL server."""
+"""Executable database and maintenance scripts without a live networked MySQL server."""
 
 from collections.abc import Callable
+from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
+from app.schemas import KnowledgeMiningResult
 import scripts.init_db as init_db
-import scripts.seed_db as seed_db
+import scripts.mine_conversations as mine_conversations
+import scripts.show_context_budget as show_context_budget
+from tests.fakes import FakeChatModel, fake_settings
 
-
-class FakeConnection:
-    def __init__(self) -> None:
-        self.sync_functions: list[Callable[..., object]] = []
-
-    async def run_sync(self, function: Callable[..., object]) -> None:
-        self.sync_functions.append(function)
-
-
-class FakeBegin:
-    def __init__(self, connection: FakeConnection) -> None:
-        self.connection = connection
-
-    async def __aenter__(self) -> FakeConnection:
-        return self.connection
-
-    async def __aexit__(self, *args: object) -> None:
-        return None
+ROOT = Path(__file__).resolve().parents[1]
 
 
 class FakeEngine:
     def __init__(self) -> None:
-        self.connection = FakeConnection()
         self.dispose_calls = 0
-
-    def begin(self) -> FakeBegin:
-        return FakeBegin(self.connection)
 
     async def dispose(self) -> None:
         self.dispose_calls += 1
-
-
-class FakeScalarResult:
-    def __init__(self, values: set[int]) -> None:
-        self.values = values
-
-    def all(self) -> list[int]:
-        return sorted(self.values)
-
-
-class FakeSeedStore:
-    def __init__(self) -> None:
-        self.ids: set[int] = set()
-        self.inserted_rows: list[tuple[int, str, str, str]] = []
-        self.commit_calls = 0
-
-
-class FakeSeedSession:
-    def __init__(self, store: FakeSeedStore) -> None:
-        self.store = store
-
-    async def __aenter__(self) -> "FakeSeedSession":
-        return self
-
-    async def __aexit__(self, *args: object) -> None:
-        return None
-
-    async def scalars(self, statement: object) -> FakeScalarResult:
-        return FakeScalarResult(self.store.ids)
-
-    def add_all(self, rows: list[Any]) -> None:
-        for row in rows:
-            self.store.ids.add(row.id)
-            self.store.inserted_rows.append(
-                (row.id, row.question, row.answer, row.category)
-            )
-
-    async def commit(self) -> None:
-        self.store.commit_calls += 1
-
-
-class FakeSessionFactory:
-    def __init__(self, store: FakeSeedStore) -> None:
-        self.store = store
-
-    def __call__(self) -> FakeSeedSession:
-        return FakeSeedSession(self.store)
 
 
 def test_init_db_upgrades_the_database_to_head(monkeypatch: Any) -> None:
@@ -102,32 +41,114 @@ def test_init_db_upgrades_the_database_to_head(monkeypatch: Any) -> None:
     assert calls[0][0].config_file_name.endswith("alembic.ini")
 
 
-async def test_seed_db_commits_once_per_run_and_skips_existing_fixture_ids(
+def test_retired_trap_scripts_are_removed() -> None:
+    """Legacy FAQ seed and manual-kind eval seed scripts must not reappear."""
+
+    assert not (ROOT / "scripts" / "seed_db.py").exists()
+    assert not (ROOT / "scripts" / "seed_retrieval_eval_knowledge.py").exists()
+
+
+def test_mine_conversations_builder_wires_consistency_checker(monkeypatch: Any) -> None:
+    """CLI conversation mining must enforce the same consistency gate as the admin API."""
+
+    settings = fake_settings()
+    monkeypatch.setattr(mine_conversations, "create_chat_model", lambda s: FakeChatModel([]))
+    monkeypatch.setattr(mine_conversations, "BgeM3Embedder", lambda *args, **kwargs: object())
+    monkeypatch.setattr(mine_conversations, "MilvusKnowledgeStore", lambda *args, **kwargs: object())
+    monkeypatch.setattr(mine_conversations, "BgeReranker", lambda *args, **kwargs: object())
+
+    service = mine_conversations.build_knowledge_admin_service(
+        settings,
+        lambda: None,
+        batch_size=7,
+    )
+
+    assert service._consistency_checker is not None
+    assert service._conversation_extractor is not None
+    assert service._conversation_batch_size == 7
+
+
+async def test_mine_conversations_run_delegates_to_service_and_disposes_engine(
     monkeypatch: Any,
 ) -> None:
-    """Catch duplicate FAQ fixtures or an uncommitted/disposed seed unit of work."""
-
     engine = FakeEngine()
-    store = FakeSeedStore()
-    session_factory = FakeSessionFactory(store)
-    monkeypatch.setattr(seed_db, "get_settings", lambda: object())
+    calls: list[tuple[int | None, bool]] = []
+
+    class FakeAdminService:
+        def __init__(self, batch_size: int | None) -> None:
+            self.batch_size = batch_size
+
+        async def mine_conversations(self, *, vectorize_after: bool) -> KnowledgeMiningResult:
+            calls.append((self.batch_size, vectorize_after))
+            return KnowledgeMiningResult(
+                conversations=3,
+                extracted=2,
+                kept=1,
+                discarded=1,
+                vectorized=1 if vectorize_after else 0,
+            )
+
+    monkeypatch.setattr(mine_conversations, "get_settings", fake_settings)
     monkeypatch.setattr(
-        seed_db,
+        mine_conversations,
         "create_async_engine_from_settings",
         lambda settings: engine,
     )
     monkeypatch.setattr(
-        seed_db,
+        mine_conversations,
         "create_session_factory",
-        lambda received_engine: session_factory,
+        lambda received_engine: object(),
+    )
+    monkeypatch.setattr(
+        mine_conversations,
+        "build_knowledge_admin_service",
+        lambda settings, factory, *, batch_size=None: FakeAdminService(batch_size),
     )
 
-    await seed_db.main()
-    await seed_db.main()
+    result = await mine_conversations.run(batch_size=5, vectorize_after=True)
 
-    assert store.inserted_rows == [
-        (1, "退货政策是什么？", "商品在符合条件时可申请退货，具体以售后页面说明为准。", "退货政策"),
-        (2, "配送费用如何计算？", "配送费用会根据订单金额、收货地区和活动规则计算。", "配送费用"),
-    ]
-    assert store.commit_calls == 2
+    assert calls == [(5, True)]
+    assert (result.conversations, result.extracted, result.kept, result.discarded, result.vectorized) == (
+        3,
+        2,
+        1,
+        1,
+        1,
+    )
+    assert engine.dispose_calls == 1
+
+
+async def test_show_context_budget_disposes_engine_even_on_error(
+    monkeypatch: Any,
+) -> None:
+    engine = FakeEngine()
+    settings = fake_settings(model_context_window=65536)
+    monkeypatch.setattr(show_context_budget, "get_settings", lambda: settings)
+    monkeypatch.setattr(
+        show_context_budget,
+        "create_async_engine_from_settings",
+        lambda received: engine,
+    )
+    monkeypatch.setattr(
+        show_context_budget,
+        "create_session_factory",
+        lambda received_engine: (lambda: None),
+    )
+    monkeypatch.setattr(
+        show_context_budget,
+        "create_chat_model",
+        lambda received: FakeChatModel([]),
+    )
+
+    budget = await show_context_budget.run()
+    assert budget["window"] == 65536
+    assert budget["history"] > 0
+    assert engine.dispose_calls == 1
+
+    def broken_service(**kwargs: object) -> SimpleNamespace:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(show_context_budget, "WorkflowChatService", broken_service)
+    with pytest.raises(RuntimeError, match="boom"):
+        await show_context_budget.run()
     assert engine.dispose_calls == 2

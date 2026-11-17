@@ -10,6 +10,18 @@ from app.topics.taxonomy import ID2LABEL, LABEL2ID, TAXONOMY_HASH, TOPIC_NAMES
 from app.topics.metrics import evaluate, evaluate_sources, labels_from_scores, scan_threshold, sigmoid
 
 BASE_MODEL = "hfl/chinese-roberta-wwm-ext"
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def repo_relative_path(path: Path, root: Path = ROOT) -> str:
+    """Format a path relative to the repository root without leaking workstation drive letters."""
+    resolved = path.resolve()
+    try:
+        return resolved.relative_to(root.resolve()).as_posix()
+    except ValueError:
+        if not path.is_absolute():
+            return path.as_posix()
+        return resolved.name
 
 
 def stage_base(output: Path):
@@ -21,8 +33,9 @@ def stage_base(output: Path):
     from transformers import AutoModelForSequenceClassification, AutoTokenizer
     if output.exists() and any(output.iterdir()):
         raise FileExistsError("base staging directory already populated; inspect rather than overwrite")
-    tokenizer=AutoTokenizer.from_pretrained(BASE_MODEL,cache_dir="data/topic-classifier/hf-cache")
-    model=AutoModelForSequenceClassification.from_pretrained(BASE_MODEL,cache_dir="data/topic-classifier/hf-cache",
+    cache_dir = str(ROOT / "data/topic-classifier/hf-cache")
+    tokenizer=AutoTokenizer.from_pretrained(BASE_MODEL,cache_dir=cache_dir)
+    model=AutoModelForSequenceClassification.from_pretrained(BASE_MODEL,cache_dir=cache_dir,
         num_labels=len(TOPIC_NAMES),problem_type="multi_label_classification",id2label=ID2LABEL,label2id=LABEL2ID)
     if not torch.cuda.is_available(): raise RuntimeError("authorized CUDA unavailable")
     model.to("cuda")
@@ -42,9 +55,11 @@ def stage_base(output: Path):
 
 def preflight(output: Path):
     import torch
-    spec=json.loads(Path("config/topic-training.json").read_text(encoding="utf-8"))
+    spec=json.loads((ROOT / "config/topic-training.json").read_text(encoding="utf-8"))
     versions={name:importlib.metadata.version(name) for name in ("torch","transformers","accelerate")}
-    if versions!=spec["packages"]:
+    expected={name:version.split("+",1)[0] for name,version in spec["packages"].items()}
+    actual={name:version.split("+",1)[0] for name,version in versions.items()}
+    if actual!=expected:
         raise RuntimeError("compute spec differs from actual versions; review environment before training")
     if not torch.cuda.is_available():
         raise RuntimeError("authorized local CUDA GPU unavailable; do not silently switch training device")
@@ -78,7 +93,7 @@ def train(dataset: Path, output: Path, *, epochs: int, batch: int):
     if output.exists() and any(output.iterdir()):
         raise FileExistsError("never overwrite trained models; use a new output directory")
     torch.manual_seed(42)
-    base=Path("data/topic-classifier/base")
+    base=ROOT / "data/topic-classifier/base"
     source=json.loads((base/"base-source.json").read_text(encoding="utf-8"))
     if source["source"]!=BASE_MODEL or source["taxonomy_hash"]!=TAXONOMY_HASH:
         raise ValueError("staged base does not match fixed technology/taxonomy")
@@ -130,7 +145,7 @@ def train(dataset: Path, output: Path, *, epochs: int, batch: int):
             "labels": list(TOPIC_NAMES), "threshold": scan["chosen"]["threshold"], "max_length":128,
             "selection": "best validation micro-F1 checkpoint; validation-only threshold scan",
             "trainable_parameters": sum(p.numel() for p in model.parameters() if p.requires_grad),
-            "dataset": str(dataset.resolve()), "manifest_hash":digest(manifest),
+            "dataset": repo_relative_path(dataset), "manifest_hash":digest(manifest),
             "dataset_hashes": {split: item["sha256"] for split,item in manifest["after_augmentation"].items()},
             "policy": "specific labels over threshold, exclusive other fallback; no argmax invented topic",
             "versions": {name: importlib.metadata.version(name) for name in ("torch","transformers","accelerate")}}

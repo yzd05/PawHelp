@@ -3,6 +3,7 @@
 Ctrl+C stops every process this script started; containers keep running for a fast restart.
 """
 import argparse
+import asyncio
 import json
 import os
 import signal
@@ -31,6 +32,13 @@ def port_open(port: int) -> bool:
         return False
 
 
+def resolve_mcp_port(url: str, default_port: int) -> int:
+    parsed = urlsplit(url)
+    if parsed.port is not None:
+        return parsed.port
+    return 443 if parsed.scheme == "https" else default_port
+
+
 def get_json(url: str) -> dict | None:
     try:
         with OPENER.open(url, timeout=2) as response:
@@ -49,16 +57,24 @@ class Stack:
         self.processes: list[tuple[str, subprocess.Popen, Path]] = []
         self.env = {**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
 
-    def start(self, name: str, port: int, args: list[str]) -> subprocess.Popen | None:
+    def start(
+        self,
+        name: str,
+        port: int,
+        args: list[str],
+        *,
+        extra_env: dict[str, str] | None = None,
+    ) -> subprocess.Popen | None:
         if port_open(port):
             print(f"  {name}: 端口 {port} 已有服务在运行，沿用它")
             return None
         LOGS.mkdir(parents=True, exist_ok=True)
         log = LOGS / f"{name}.log"
+        child_env = {**self.env, **(extra_env or {})}
         # Own process group, so Ctrl+C reaches this script first and children stop in order.
         flags = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if WINDOWS else {"start_new_session": True}
         with log.open("wb") as handle:
-            process = subprocess.Popen([sys.executable, *args], cwd=ROOT, env=self.env,
+            process = subprocess.Popen([sys.executable, *args], cwd=ROOT, env=child_env,
                                        stdout=handle, stderr=subprocess.STDOUT, **flags)
         self.processes.append((name, process, log))
         print(f"  {name}: 启动中（日志 {log.relative_to(ROOT)}）")
@@ -98,8 +114,50 @@ def start_containers() -> None:
     subprocess.run(["docker", "compose", "up", "-d", "--wait", *CONTAINERS], cwd=ROOT, check=True)
 
 
+async def _inspect_knowledge_state(settings) -> tuple[bool, int]:
+    from app.database.session import create_async_engine_from_settings, create_session_factory
+    from app.repositories.knowledge import KnowledgeRepository
+
+    engine = create_async_engine_from_settings(settings)
+    factory = create_session_factory(engine)
+    try:
+        async with factory() as session:
+            repository = KnowledgeRepository(session)
+            has_curated = await repository.has_curated_knowledge()
+            counts = await repository.count_chunks_by_status()
+            return has_curated, counts.get("pending", 0)
+    finally:
+        await engine.dispose()
+
+
+def bootstrap_knowledge(settings=None) -> tuple[bool, bool]:
+    """Import curated Markdown docs and vectorize pending chunks in short-lived subprocesses."""
+    if settings is None:
+        from app.config import get_settings
+
+        settings = get_settings()
+    has_curated, pending_count = asyncio.run(_inspect_knowledge_state(settings))
+    ingested = False
+    vectorized = False
+    if not has_curated:
+        print("知识库初始化：导入 Markdown 知识文档（scripts.ingest_knowledge）")
+        subprocess.run([sys.executable, "-m", "scripts.ingest_knowledge"], cwd=ROOT, check=True)
+        ingested = True
+        print("知识库初始化：向量化待入库知识块（scripts.vectorize_knowledge）")
+        subprocess.run([sys.executable, "-m", "scripts.vectorize_knowledge"], cwd=ROOT, check=True)
+        vectorized = True
+    elif pending_count > 0:
+        print(f"知识库初始化：检测到 {pending_count} 条待向量化记录，继续执行 scripts.vectorize_knowledge")
+        subprocess.run([sys.executable, "-m", "scripts.vectorize_knowledge"], cwd=ROOT, check=True)
+        vectorized = True
+    else:
+        print("知识库初始化：已有已向量化知识，跳过重复导入")
+    return ingested, vectorized
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--bootstrap", action="store_true", help="首次启动时自动导入知识文档并完成 Milvus 向量化")
     parser.add_argument("--no-docker", action="store_true", help="不启动容器，使用已在运行的 MySQL/Milvus")
     parser.add_argument("--no-mcp", action="store_true", help="不启动物流/售后 MCP 服务")
     parser.add_argument("--no-classifier", action="store_true", help="不启动主题分类器（8110）")
@@ -118,14 +176,26 @@ def main() -> None:
     from app.config import get_settings
 
     settings = get_settings()
+    if args.bootstrap:
+        bootstrap_knowledge(settings)
     stack = Stack()
     try:
         print("服务：")
         mcp_ports = {}
         if not args.no_mcp and settings.mcp_enabled:
-            for name, url in (("logistics", settings.mcp_logistics_url), ("aftersales", settings.mcp_aftersales_url)):
-                mcp_ports[name] = urlsplit(url).port
-                stack.start(name, mcp_ports[name], ["-m", f"mcp_servers.{name}_server"])
+            mcp_specs = (
+                ("logistics", settings.mcp_logistics_url, 8101, "MCP_LOGISTICS_PORT"),
+                ("aftersales", settings.mcp_aftersales_url, 8102, "MCP_AFTERSALES_PORT"),
+            )
+            for name, url, default_port, env_key in mcp_specs:
+                port = resolve_mcp_port(url, default_port)
+                mcp_ports[name] = port
+                stack.start(
+                    name,
+                    port,
+                    ["-m", f"mcp_servers.{name}_server"],
+                    extra_env={env_key: str(port)},
+                )
         classifier = not args.no_classifier and (CLASSIFIER_MODEL / "model.safetensors").exists()
         if not args.no_classifier and not classifier:
             print(f"  classifier: 跳过，未找到模型 {CLASSIFIER_MODEL.relative_to(ROOT)}")

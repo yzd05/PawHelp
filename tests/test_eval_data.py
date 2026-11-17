@@ -99,6 +99,13 @@ def test_jev_intent_cases_agree_with_the_router_and_keep_a_fixed_split() -> None
     _assert_route_labels_agree(cases)
 
 
+def test_retired_laptop_retrieval_fixture_is_removed() -> None:
+    """Keep only the 500-case pet-supplies retrieval benchmark, never legacy laptop rows."""
+
+    assert not (EVALS_DIR / "retrieval_quality_cases.jsonl").exists()
+    assert (EVALS_DIR / "customer_service_500.csv").is_file()
+
+
 def _assert_route_labels_agree(cases) -> None:
     from typing import get_args
 
