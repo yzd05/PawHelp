@@ -10,6 +10,15 @@ from app.knowledge.confidence import EvidenceGate
 from app.knowledge.evidence import EvidenceSufficiencyChecker
 from app.knowledge.search import RetrievalResult, RetrievalStrategy
 
+# Avoid splitting single-intent questions containing bare "和/与" noun phrases.
+_COMPOUND_QUESTION_RE = re.compile(
+    r"[;；]"
+    r"|[?？]\s*\S"
+    r"|(?<=\S{3})[,，]\s*(?=\S{3})"
+    r"|以及|同时|另外|分别|并且|还有|顺便|再问|除此之外"
+    r"|(?:Pro|Lite|Max|Mini|Plus|[A-Z]{2,}-\w+).*(?:和|与).*(?:区别|对比|差异)"
+)
+
 
 class KnowledgeSubquestions(BaseModel):
     queries: list[str] = Field(min_length=1, max_length=4)
@@ -20,7 +29,7 @@ class QuestionSplitter:
         self.model, self.method = model, method
 
     async def split(self, question):
-        if not re.search(r"[,，;；]|[?？].+|以及|同时|另外|分别|并且|和|与|还有", question):
+        if not _COMPOUND_QUESTION_RE.search(question):
             return [question]
         try:
             result = await self.model.with_structured_output(KnowledgeSubquestions, method=self.method).ainvoke([
@@ -58,8 +67,18 @@ class KnowledgeEvidencePipeline:
         """Split, retrieve and merge: exactly the evidence the gate scores. Calibration collects it here."""
         parts = await self.splitter.split(question)
         queries = list(dict.fromkeys([*parts, question, *extra_queries]))[:8]
-        options = {**options, "strategy": RetrievalStrategy.HYBRID_RERANK, "limit": self.top_k}
-        results = await asyncio.gather(*(self.search.retrieve(q, **options) for q in queries))
+        retrieve_many = getattr(self.search, "retrieve_many", None)
+        if len(queries) > 1 and callable(retrieve_many):
+            batch_options = {k: v for k, v in options.items() if k not in {"strategy", "limit"}}
+            results = await retrieve_many(
+                queries,
+                limit=self.top_k,
+                primary_query=question,
+                **batch_options,
+            )
+        else:
+            call_options = {**options, "strategy": RetrievalStrategy.HYBRID_RERANK, "limit": self.top_k}
+            results = list(await asyncio.gather(*(self.search.retrieve(q, **call_options) for q in queries)))
         by_id = {}
         for result in results:
             for match in result.matches:

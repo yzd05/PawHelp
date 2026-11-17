@@ -46,8 +46,9 @@ def metrics_from_report(report):
 
 
 class EvaluationPipeline:
-    def __init__(self, settings, sessions, root, lock):
+    def __init__(self, settings, sessions, root, lock, *, embedder=None, reranker=None, vector_store=None):
         self.settings, self.sessions, self.root, self.lock = settings, sessions, Path(root), lock
+        self.embedder, self.reranker, self.vector_store = embedder, reranker, vector_store
         self.last_error = None
 
     async def record(self, report, triggered_by="手动", path=None):
@@ -67,7 +68,8 @@ class EvaluationPipeline:
             try:
                 report, paths = await run_retrieval_evaluation(self.settings, self.root / DEFAULT_EVAL_CASES_PATH, directory,
                     sample_per_bucket=self.settings.evaluation_sample_per_bucket, generation_strategies=DEFAULT_GENERATION_STRATEGIES,
-                    model_callbacks=[budget])
+                    model_callbacks=[budget], embedder=self.embedder, reranker=self.reranker,
+                    vector_store=self.vector_store, session_factory=self.sessions)
                 run_id = await self.record(report, triggered_by, paths[0])
                 self.last_error = None
                 return {"run_id": run_id, "metrics": metrics_from_report(report), "model_calls": budget.calls, "report_path": str(paths[0])}

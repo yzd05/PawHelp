@@ -16,6 +16,8 @@ from app.knowledge.reranking import BgeReranker
 from app.knowledge.vector_store import MilvusKnowledgeStore, milvus_call
 from app.repositories.knowledge import KnowledgeRepository
 
+DEFAULT_RERANK_INPUT_LIMIT = 20
+
 
 class RetrievalStrategy(StrEnum):
     DENSE = "dense"
@@ -77,8 +79,31 @@ def build_filter_expression(
     return " and ".join(clauses)
 
 
+def _round_robin_unique_chunks(
+    per_query_rows: Sequence[Sequence[KnowledgeChunk]],
+    *,
+    limit: int,
+) -> list[KnowledgeChunk]:
+    """Select up to ``limit`` unique chunks fairly across subqueries by RRF rank."""
+
+    selected: list[KnowledgeChunk] = []
+    seen_ids: set[int] = set()
+    max_depth = max((len(rows) for rows in per_query_rows), default=0)
+    for depth in range(max_depth):
+        for rows in per_query_rows:
+            if depth >= len(rows):
+                continue
+            chunk = rows[depth]
+            if chunk.id not in seen_ids:
+                seen_ids.add(chunk.id)
+                selected.append(chunk)
+                if len(selected) >= limit:
+                    return selected
+    return selected
+
+
 class HybridKnowledgeSearch:
-    """Understand, retrieve, hydrate, and optionally rerank one standalone query."""
+    """Understand, retrieve, hydrate, and optionally rerank standalone or grouped queries."""
 
     def __init__(
         self,
@@ -92,6 +117,7 @@ class HybridKnowledgeSearch:
         dense_limit: int = 50,
         bm25_limit: int = 50,
         rerank_limit: int = 10,
+        rerank_input_limit: int = DEFAULT_RERANK_INPUT_LIMIT,
     ) -> None:
         self._session_factory = session_factory
         self._embedder = embedder
@@ -102,6 +128,7 @@ class HybridKnowledgeSearch:
         self._dense_limit = dense_limit
         self._bm25_limit = bm25_limit
         self._rerank_limit = rerank_limit
+        self._rerank_input_limit = max(1, rerank_input_limit)
 
     async def retrieve(
         self,
@@ -133,11 +160,13 @@ class HybridKnowledgeSearch:
         if strategy is RetrievalStrategy.HYBRID_RERANK:
             if self._reranker is None:
                 raise RuntimeError("hybrid_rerank requires a configured reranker")
+            output_limit = min(limit, self._rerank_limit)
+            input_pool = rows[: max(self._rerank_input_limit, output_limit)]
             ranked = await asyncio.to_thread(
                 self._reranker.rerank,
                 plan.normalized_query,
-                rows,
-                limit=min(limit, self._rerank_limit),
+                input_pool,
+                limit=output_limit,
             )
             matches = tuple(
                 KnowledgeMatch(chunk=item.chunk, score=float(item.score))
@@ -155,6 +184,98 @@ class HybridKnowledgeSearch:
             or matches[0].score >= self._confidence_threshold
         )
         return RetrievalResult(matches, plan, strategy, confident)
+
+    async def retrieve_many(
+        self,
+        queries: Sequence[str],
+        *,
+        limit: int = 10,
+        categories: Sequence[str] = (),
+        content_types: Sequence[str] = (),
+        allowed_chunk_ids: Sequence[int] | None = None,
+        primary_query: str | None = None,
+    ) -> list[RetrievalResult]:
+        """Recall multiple subqueries, deduplicate chunk IDs, then rerank once."""
+
+        if not queries:
+            return []
+        if len(queries) == 1:
+            return [
+                await self.retrieve(
+                    queries[0],
+                    strategy=RetrievalStrategy.HYBRID_RERANK,
+                    limit=limit,
+                    categories=categories,
+                    content_types=content_types,
+                    allowed_chunk_ids=allowed_chunk_ids,
+                )
+            ]
+        if self._reranker is None:
+            raise RuntimeError("hybrid_rerank requires a configured reranker")
+
+        plans = list(await asyncio.gather(*(self._query_planner.understand(q) for q in queries)))
+        filter_expression = build_filter_expression(
+            categories, content_types, allowed_chunk_ids
+        )
+        vectors = await asyncio.to_thread(
+            self._embedder.embed,
+            [plan.normalized_query for plan in plans],
+        )
+        per_query_hits = list(
+            await asyncio.gather(
+                *(
+                    self._recall(
+                        RetrievalStrategy.HYBRID_RERANK,
+                        vec,
+                        " ".join([plan.normalized_query, *plan.synonyms]),
+                        filter_expression,
+                    )
+                    for plan, vec in zip(plans, vectors, strict=True)
+                )
+            )
+        )
+        all_raw_ids = list(
+            dict.fromkeys(vector_id for hits in per_query_hits for vector_id, _ in hits)
+        )
+        async with self._session_factory() as session:
+            hydrated = await KnowledgeRepository(session).get_vectorized_by_ids(all_raw_ids)
+        by_vector_id = {row.vector_id: row for row in hydrated if row.vector_id is not None}
+
+        output_limit = min(limit, self._rerank_limit)
+        per_query_rows = [
+            [by_vector_id[vid] for vid, _ in hits if vid in by_vector_id]
+            for hits in per_query_hits
+        ]
+        pool_limit = max(self._rerank_input_limit, output_limit)
+        unique_pool = _round_robin_unique_chunks(per_query_rows, limit=pool_limit)
+
+        scoring_query = (primary_query or plans[0].normalized_query).strip() or plans[0].normalized_query
+        ranked = await asyncio.to_thread(
+            self._reranker.rerank,
+            scoring_query,
+            unique_pool,
+            limit=len(unique_pool),
+        )
+        score_by_id = {item.chunk.id: float(item.score) for item in ranked}
+
+        results: list[RetrievalResult] = []
+        for plan, rows in zip(plans, per_query_rows, strict=True):
+            matches = tuple(
+                sorted(
+                    (
+                        KnowledgeMatch(chunk=row, score=score_by_id[row.id])
+                        for row in rows
+                        if row.id in score_by_id
+                    ),
+                    key=lambda item: item.score,
+                    reverse=True,
+                )[:output_limit]
+            )
+            confident = bool(matches) and matches[0].score >= self._confidence_threshold
+            results.append(
+                RetrievalResult(matches, plan, RetrievalStrategy.HYBRID_RERANK, confident)
+            )
+        return results
 
     async def _recall(
         self,

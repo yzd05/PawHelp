@@ -36,15 +36,19 @@ async def test_batch_is_traced_deduplicated_promoted_and_not_selected_again(
     conversations = ConversationRepository(mysql_session)
     messages = MessageRepository(mysql_session)
     await conversations.create(str(uuid4()))
+    live_in_progress = await conversations.create(str(uuid4()))
+    await messages.add_user(live_in_progress.id, "刚聊第一句还在进行中")
+    await messages.add_assistant(live_in_progress.id, "您好，请问有什么可以帮您？")
     first = await conversations.create(str(uuid4()))
     second = await conversations.create(str(uuid4()))
     no_knowledge = await conversations.create(str(uuid4()))
     for conversation in (first, second, no_knowledge):
+        conversation.status = "已结束"
         await messages.add_user(conversation.id, "换一种说法问配送费是多少？")
         await messages.add_assistant(conversation.id, "配送费用会在订单结算页展示。")
     await mysql_session.flush()
 
-    transcripts = await repository.load_unstaged_transcripts(limit=3)
+    transcripts = await repository.load_unstaged_transcripts(limit=10)
     assert {item.conversation_id for item in transcripts} == {
         first.id,
         second.id,
@@ -96,6 +100,12 @@ async def test_batch_is_traced_deduplicated_promoted_and_not_selected_again(
     assert promoted[0].content_type == "conversation"
     assert promoted[0].vectorize_status == "pending"
     assert await repository.load_unstaged_transcripts(limit=20) == []
+
+    # Once the previously active conversation finishes, it becomes eligible for mining.
+    live_in_progress.status = "已结束"
+    await mysql_session.flush()
+    settled = await repository.load_unstaged_transcripts(limit=20)
+    assert [item.conversation_id for item in settled] == [live_in_progress.id]
 
 
 async def test_mining_deduplicates_against_authoritative_knowledge(

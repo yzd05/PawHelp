@@ -7,6 +7,7 @@ from pathlib import Path
 from langchain_core.messages.utils import count_tokens_approximately
 
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import Settings
 from app.context import bound_text
@@ -110,12 +111,21 @@ async def run_retrieval_evaluation(
     generation_strategies: Sequence[RetrievalStrategy] | None = None,
     model_callbacks: list | None = None,
     normalize_queries: bool = True,
+    embedder: BgeM3Embedder | None = None,
+    reranker: BgeReranker | None = None,
+    vector_store: MilvusKnowledgeStore | None = None,
+    session_factory: async_sessionmaker[AsyncSession] | None = None,
 ) -> tuple[dict[str, object], tuple[Path, Path]]:
     """Run the complete four-strategy evaluation and persist both reports."""
 
     cases = load_cases(cases_path)
-    engine = create_async_engine_from_settings(settings)
-    factory = create_session_factory(engine)
+    owned_engine = None
+    if session_factory is None:
+        owned_engine = create_async_engine_from_settings(settings)
+        factory = create_session_factory(owned_engine)
+    else:
+        factory = session_factory
+
     benchmark_corpus_ids: list[int] | None = None
     if cases_path.resolve() == DEFAULT_EVAL_CASES_PATH.resolve():
         try:
@@ -124,7 +134,8 @@ async def run_retrieval_evaluation(
                 knowledge_rows = list(await session.scalars(select(KnowledgeChunk)))
             benchmark_corpus_ids = validate_evaluation_corpus(knowledge_rows)
         except Exception:
-            await engine.dispose()
+            if owned_engine is not None:
+                await owned_engine.dispose()
             raise
     model = create_chat_model(settings, max_retries=0) if model_callbacks is not None else create_chat_model(settings)
     if model_callbacks is not None:
@@ -134,20 +145,26 @@ async def run_retrieval_evaluation(
     )
     if not normalize_queries:
         planner = IdentityQueryUnderstanding()
+    active_embedder = embedder or BgeM3Embedder(
+        settings.embedding_model,
+        batch_size=settings.embedding_batch_size,
+        max_length=settings.embedding_max_length,
+    )
+    active_vector_store = vector_store or MilvusKnowledgeStore(
+        settings.milvus_uri,
+        settings.milvus_hybrid_collection,
+    )
+    active_reranker = reranker or BgeReranker(
+        settings.reranker_model,
+        batch_size=settings.reranker_batch_size,
+        query_max_length=settings.reranker_query_max_length,
+        passage_max_length=settings.reranker_passage_max_length,
+    )
     search = HybridKnowledgeSearch(
         factory,
-        BgeM3Embedder(
-            settings.embedding_model,
-            batch_size=settings.embedding_batch_size,
-            max_length=settings.embedding_max_length,
-        ),
-        MilvusKnowledgeStore(settings.milvus_uri, settings.milvus_hybrid_collection),
-        BgeReranker(
-            settings.reranker_model,
-            batch_size=settings.reranker_batch_size,
-            query_max_length=settings.reranker_query_max_length,
-            passage_max_length=settings.reranker_passage_max_length,
-        ),
+        active_embedder,
+        active_vector_store,
+        active_reranker,
         planner,
         confidence_threshold=settings.knowledge_rerank_threshold,
         dense_limit=settings.dense_recall_limit,
@@ -167,7 +184,8 @@ async def run_retrieval_evaluation(
         session_factory=factory,
         structured_output_method=settings.structured_output_method,
         judge_model=settings.openai_model,
-        top_k=settings.rerank_limit,
+        top_k=settings.rerank_top_k,
+        metric_k=settings.rerank_top_k,
         evaluation_source_paths=tuple(EVALUATION_SOURCES) if benchmark_corpus_ids is not None else None,
         evidence_pipeline=pipeline,
     )
@@ -231,7 +249,7 @@ async def run_retrieval_evaluation(
                     if settings.evidence_judge != "llm" and Path(settings.jev_calibration_path).is_file() else None,
             },
             "retrieval_configuration": {key: getattr(settings, key) for key in (
-                "dense_recall_limit", "bm25_recall_limit", "rerank_limit", "knowledge_rerank_threshold",
+                "dense_recall_limit", "bm25_recall_limit", "rerank_limit", "rerank_top_k", "knowledge_rerank_threshold",
                 "embedding_max_length", "reranker_query_max_length", "reranker_passage_max_length",
                 "structured_output_method", "model_max_output_tokens")},
             "generation_failed": sum(
@@ -257,4 +275,5 @@ async def run_retrieval_evaluation(
         }
         return report, write_report(report, output_dir)
     finally:
-        await engine.dispose()
+        if owned_engine is not None:
+            await owned_engine.dispose()

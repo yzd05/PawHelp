@@ -1,14 +1,18 @@
 """Offline corpus contracts, local redaction and a persistent paid-call budget."""
 from contextlib import contextmanager
+import ctypes
 from datetime import datetime, timezone
 import hashlib
 import json
 import os
 from pathlib import Path
 import re
+import time
 import unicodedata
 
 from app.topics.taxonomy import TAXONOMY_HASH, TOPIC_NAMES, validate_labels
+
+_STALE_CORRUPT_LOCK_SECONDS = 5.0
 
 
 def digest(value: object) -> str:
@@ -33,16 +37,64 @@ def write_jsonl(path: Path, rows: list[dict]) -> None:
     os.replace(temp, path)
 
 
+def pid_is_alive(pid: int) -> bool:
+    """Check whether ``pid`` refers to a live OS process without sending signals on Windows."""
+    if pid <= 0:
+        return False
+    if os.name == "nt":
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        process_query_limited_information = 0x1000
+        still_active = 259
+        error_access_denied = 5
+        handle = kernel32.OpenProcess(process_query_limited_information, False, int(pid))
+        if not handle:
+            return ctypes.get_last_error() == error_access_denied
+        try:
+            exit_code = ctypes.c_ulong()
+            ok = kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code))
+            return bool(ok and exit_code.value == still_active)
+        finally:
+            kernel32.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+
+
+def _lock_is_stale(path: Path) -> bool:
+    try:
+        stat = path.stat()
+        raw = path.read_text(encoding="utf-8").strip()
+    except FileNotFoundError:
+        return True
+    except OSError:
+        return False
+    try:
+        pid = int(raw)
+    except ValueError:
+        return (time.time() - stat.st_mtime) >= _STALE_CORRUPT_LOCK_SECONDS
+    return not pid_is_alive(pid)
+
+
 @contextmanager
 def exclusive_run(path: Path):
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    try:
+        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        if not _lock_is_stale(path):
+            raise
+        path.unlink(missing_ok=True)
+        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
     try:
         os.write(fd, str(os.getpid()).encode())
         yield
     finally:
         os.close(fd)
-        path.unlink()
+        path.unlink(missing_ok=True)
 
 
 def redact(text: str) -> str:

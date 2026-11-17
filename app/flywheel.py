@@ -14,8 +14,46 @@ from app.repositories.conversations import ConversationRepository
 from app.repositories.quality import QualityRepository
 from app.repositories.knowledge import KnowledgeRepository
 from app.knowledge.chunking import KnowledgeDraft
+from app.knowledge.vector_store import MAX_SECTION_PATH_BYTES, MAX_TEXT_BYTES
 
 logger = logging.getLogger(__name__)
+
+FLYWHEEL_CATEGORY = "人工核准 FAQ"
+MAX_SECTION_PATH_CHARS = 512
+MAX_APPROVED_ANSWER_BYTES = 60000
+
+
+def _truncate_utf8(value: str, *, max_chars: int, max_bytes: int) -> str:
+    if len(value) <= max_chars and len(value.encode("utf-8")) <= max_bytes:
+        return value
+    ellipsis = "…"
+    ellipsis_bytes = len(ellipsis.encode("utf-8"))
+    char_budget = max(0, max_chars - len(ellipsis))
+    byte_budget = max(0, max_bytes - ellipsis_bytes)
+    prefix = value[:char_budget]
+    encoded = prefix.encode("utf-8")
+    if len(encoded) > byte_budget:
+        prefix = encoded[:byte_budget].decode("utf-8", errors="ignore")
+    return prefix.rstrip() + ellipsis
+
+
+def flywheel_section_path(normalized_question: str) -> str:
+    return _truncate_utf8(
+        f"{FLYWHEEL_CATEGORY} / {normalized_question.strip()}",
+        max_chars=MAX_SECTION_PATH_CHARS,
+        max_bytes=min(MAX_SECTION_PATH_BYTES, 2000),
+    )
+
+
+def validate_approved_answer_bytes(question: str, approved_answer: str) -> str:
+    cleaned = approved_answer.strip()
+    if not cleaned:
+        raise ValueError("通过时必须填写核准答案")
+    answer_bytes = len(cleaned.encode("utf-8"))
+    full_text = f"分类：{FLYWHEEL_CATEGORY}\n问题：{question}\n答案：{cleaned}"
+    if answer_bytes > MAX_APPROVED_ANSWER_BYTES or len(full_text.encode("utf-8")) > MAX_TEXT_BYTES:
+        raise ValueError(f"核准答案超过向量库 UTF-8 字节上限（最多 {MAX_APPROVED_ANSWER_BYTES} 字节），请精简后重试")
+    return cleaned
 
 
 class NormalizedGap(BaseModel):
@@ -74,12 +112,20 @@ def queue_fingerprint(rows):
     ).encode()).hexdigest()
 
 
+def _live_chunk(chunk: KnowledgeChunk | None) -> KnowledgeChunk | None:
+    if chunk is None or chunk.vectorize_status == "deleting":
+        return None
+    return chunk
+
+
 def review_view(row, chunk=None):
+    live = _live_chunk(chunk)
     return {"id": row.id, "normalized_question": row.normalized_question,
             "ai_suggested_answer": row.ai_suggested_answer,
             "occurrence_count": row.occurrence_count, "review_status": row.review_status,
-            "approved_answer": row.approved_answer, "published_chunk_id": row.published_chunk_id,
-            "publication_status": "已同步" if chunk and chunk.vectorize_status == "done"
+            "approved_answer": row.approved_answer,
+            "published_chunk_id": live.id if live is not None else row.published_chunk_id,
+            "publication_status": "已同步" if live and live.vectorize_status == "done"
                                   else "待同步" if row.review_status == "通过" else "未核准",
             "publication_error": row.publication_error,
             "created_at": row.created_at.replace(tzinfo=timezone.utc).isoformat() if row.created_at else None}
@@ -210,8 +256,11 @@ class Flywheel:
                      if sort == "frequency" else select(ReviewQueue).order_by(ReviewQueue.id.desc()))
             if status != "全部": query = query.where(ReviewQueue.review_status == status)
             rows = list(await session.scalars(query.offset(offset).limit(50)))
-            chunks = {r.id: r for r in await session.scalars(select(KnowledgeChunk).where(
-                KnowledgeChunk.id.in_([r.published_chunk_id for r in rows if r.published_chunk_id])))}
+            chunk_ids = [r.published_chunk_id for r in rows if r.published_chunk_id]
+            chunks = (
+                {r.id: r for r in await session.scalars(select(KnowledgeChunk).where(KnowledgeChunk.id.in_(chunk_ids)))}
+                if chunk_ids else {}
+            )
             pending = await session.scalar(select(func.count()).select_from(LowConfidenceQuestion)
                                            .where(LowConfidenceQuestion.matched_review_id.is_(None)))
             return {"items": [review_view(r, chunks.get(r.published_chunk_id)) for r in rows],
@@ -231,43 +280,118 @@ class Flywheel:
                  "created_at": r.created_at.replace(tzinfo=timezone.utc).isoformat() if r.created_at else None}
                 for r in originals]}
 
+    @staticmethod
+    async def _ensure_published_chunk(session, row: ReviewQueue, review_id: int) -> KnowledgeChunk:
+        existing = await session.scalar(
+            select(KnowledgeChunk)
+            .where(
+                KnowledgeChunk.questions == row.normalized_question,
+                KnowledgeChunk.answer == row.approved_answer,
+                KnowledgeChunk.vectorize_status != "deleting",
+            )
+            .limit(1)
+        )
+        if existing is not None:
+            if existing.vectorize_status == "failed":
+                existing.vector_id = None
+                existing.vectorize_status = "pending"
+            row.published_chunk_id = existing.id
+            await session.flush()
+            return existing
+        chunks = await KnowledgeRepository(session).add_drafts(
+            [
+                KnowledgeDraft(
+                    category=FLYWHEEL_CATEGORY,
+                    questions=row.normalized_question,
+                    answer=row.approved_answer or "",
+                    section_path=flywheel_section_path(row.normalized_question),
+                    content_type="faq",
+                )
+            ],
+            link_neighbors=False,
+            source_kind="manual",
+            source_path=f"review:{review_id}",
+        )
+        row.published_chunk_id = chunks[0].id
+        await session.flush()
+        return chunks[0]
+
     async def review(self, review_id, approved_answer=None, *, reject=False):
-        if not reject and (not approved_answer or not approved_answer.strip()): raise ValueError("通过时必须填写核准答案")
+        if not reject and (not approved_answer or not approved_answer.strip()):
+            raise ValueError("通过时必须填写核准答案")
+        cleaned_answer = None
         if not reject:
             async with self.sessions() as session:
                 row = await session.get(ReviewQueue, review_id)
-                exact = row is not None and await session.scalar(select(KnowledgeChunk.id).where(
-                    KnowledgeChunk.questions == row.normalized_question,
-                    KnowledgeChunk.answer == approved_answer.strip()).limit(1))
-            if row is not None and row.review_status == "待审" and not exact:
+                if row is not None:
+                    cleaned_answer = validate_approved_answer_bytes(row.normalized_question, approved_answer)
+                existing_pub = (
+                    _live_chunk(await session.get(KnowledgeChunk, row.published_chunk_id))
+                    if row is not None and row.published_chunk_id
+                    else None
+                )
+                can_reapprove = row is not None and (
+                    row.review_status == "待审"
+                    or (row.review_status == "通过" and existing_pub is None)
+                )
+                exact = row is not None and await session.scalar(
+                    select(KnowledgeChunk.id)
+                    .where(
+                        KnowledgeChunk.questions == row.normalized_question,
+                        KnowledgeChunk.answer == cleaned_answer,
+                        KnowledgeChunk.vectorize_status != "deleting",
+                    )
+                    .limit(1)
+                )
+            if can_reapprove and not exact and self.knowledge is not None:
                 # Raises before the review is marked approved, so the operator can revise the answer.
-                await self.knowledge.assert_consistent(row.normalized_question, approved_answer.strip())
+                await self.knowledge.assert_consistent(row.normalized_question, cleaned_answer)
         async with self.sessions() as session, session.begin():
             row = await session.scalar(select(ReviewQueue).where(ReviewQueue.id == review_id).with_for_update())
-            if row is None: raise LookupError("审核记录不存在")
-            if row.review_status != "待审": raise ValueError("该记录已经审核，请勿重复提交")
+            if row is None:
+                raise LookupError("审核记录不存在")
+            live_pub = (
+                _live_chunk(await session.get(KnowledgeChunk, row.published_chunk_id))
+                if row.published_chunk_id
+                else None
+            )
+            recoverable_orphan = row.review_status == "通过" and live_pub is None
+            if row.review_status != "待审" and not recoverable_orphan:
+                raise ValueError("该记录已经审核，请勿重复提交")
             if reject:
                 row.review_status = "驳回"
+                row.published_chunk_id = None
+                row.publication_error = None
             else:
-                row.review_status, row.approved_answer = "通过", approved_answer.strip()
-                existing = await session.scalar(select(KnowledgeChunk).where(
-                    KnowledgeChunk.questions == row.normalized_question, KnowledgeChunk.answer == row.approved_answer,
-                ).limit(1))
-                if existing:
-                    row.published_chunk_id = existing.id
-                else:
-                    chunks = await KnowledgeRepository(session).add_drafts([KnowledgeDraft(
-                        category="人工核准 FAQ", questions=row.normalized_question, answer=row.approved_answer,
-                        section_path=f"人工核准 FAQ / {row.normalized_question}", content_type="faq",
-                    )], link_neighbors=False, source_kind="manual", source_path=f"review:{review_id}")
-                    row.published_chunk_id = chunks[0].id
-        if not reject: await self.publish(review_id)
+                validated = cleaned_answer or validate_approved_answer_bytes(row.normalized_question, approved_answer)
+                row.review_status, row.approved_answer = "通过", validated
+                row.publication_error = None
+                await self._ensure_published_chunk(session, row, review_id)
+        if not reject:
+            await self.publish(review_id)
         return await self.detail(review_id)
 
     async def publish(self, review_id):
-        async with self.sessions() as session:
-            row = await session.get(ReviewQueue, review_id)
-            if row is None or row.review_status != "通过": raise ValueError("只有核准记录可以同步")
+        async with self.sessions() as session, session.begin():
+            row = await session.scalar(select(ReviewQueue).where(ReviewQueue.id == review_id).with_for_update())
+            if row is None or row.review_status != "通过":
+                raise ValueError("只有核准记录可以同步")
+            chunk = (
+                _live_chunk(await session.get(KnowledgeChunk, row.published_chunk_id))
+                if row.published_chunk_id
+                else None
+            )
+            if chunk is None:
+                if not row.approved_answer or not row.approved_answer.strip():
+                    raise ValueError("核准答案缺失，无法恢复已删除的知识块")
+                validate_approved_answer_bytes(row.normalized_question, row.approved_answer)
+                await self._ensure_published_chunk(session, row, review_id)
+            elif chunk.vectorize_status == "failed":
+                validate_approved_answer_bytes(row.normalized_question, chunk.answer)
+                chunk.vector_id = None
+                chunk.vectorize_status = "pending"
+                await session.flush()
+
         error = None
         try:
             await self.knowledge.vectorize_pending()
@@ -276,5 +400,13 @@ class Flywheel:
             error = "知识已核准，向量同步失败；可重试同步，不需要重复核准或插入知识"
         async with self.sessions() as session, session.begin():
             row = await session.get(ReviewQueue, review_id)
-            row.publication_error = error
+            if row is not None:
+                chunk = (
+                    _live_chunk(await session.get(KnowledgeChunk, row.published_chunk_id))
+                    if row.published_chunk_id
+                    else None
+                )
+                if error is None and (chunk is None or chunk.vectorize_status == "failed"):
+                    error = "知识块向量化失败（已隔离），请核查内容长度或向量库状态后重试"
+                row.publication_error = error
         return await self.detail(review_id)

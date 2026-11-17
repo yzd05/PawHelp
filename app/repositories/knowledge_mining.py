@@ -3,7 +3,7 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from sqlalchemy import exists, func, select
+from sqlalchemy import exists, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import (
@@ -17,13 +17,22 @@ from app.repositories.knowledge import knowledge_identity
 
 CONVERSATION_SOURCE_PREFIX = "conversation:"
 NO_REUSABLE_KNOWLEDGE = "无可复用知识"
+DEFAULT_ACTIVE_IDLE_MINUTES = 30
 
 
 def conversation_source_ref(conversation_id: int) -> str:
     return f"{CONVERSATION_SOURCE_PREFIX}{conversation_id}"
 
 
-def _unstaged_conversation_predicates() -> tuple[object, object, object]:
+def _idle_cutoff_expression(dialect_name: str, idle_minutes: int) -> object:
+    if dialect_name == "sqlite":
+        return func.datetime("now", f"-{int(idle_minutes)} minutes")
+    return func.timestampadd(text("MINUTE"), -int(idle_minutes), func.current_timestamp())
+
+
+def _unstaged_conversation_predicates(
+    *, dialect_name: str = "mysql", active_idle_minutes: int = DEFAULT_ACTIVE_IDLE_MINUTES
+) -> tuple[object, ...]:
     already_staged = exists().where(
         QAExtractionStaging.source_ref
         == func.concat(CONVERSATION_SOURCE_PREFIX, Conversation.id)
@@ -40,6 +49,12 @@ def _unstaged_conversation_predicates() -> tuple[object, object, object]:
         Message.content.is_not(None),
         Message.content != "",
     )
+    if active_idle_minutes > 0:
+        settled = or_(
+            Conversation.status != "进行中",
+            Conversation.updated_at <= _idle_cutoff_expression(dialect_name, active_idle_minutes),
+        )
+        return ~already_staged, has_user_message, has_assistant_message, settled
     return ~already_staged, has_user_message, has_assistant_message
 
 
@@ -59,14 +74,30 @@ class KnowledgeCandidate:
 class KnowledgeMiningRepository:
     """Select new sources, stage extraction, then promote unique candidates."""
 
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        *,
+        active_idle_minutes: int = DEFAULT_ACTIVE_IDLE_MINUTES,
+    ) -> None:
         self._session = session
+        self._active_idle_minutes = active_idle_minutes
+
+    def _predicates(self) -> tuple[object, ...]:
+        try:
+            dialect_name = self._session.get_bind().dialect.name
+        except Exception:
+            dialect_name = "mysql"
+        return _unstaged_conversation_predicates(
+            dialect_name=dialect_name,
+            active_idle_minutes=self._active_idle_minutes,
+        )
 
     async def load_unstaged_transcripts(self, *, limit: int) -> list[Transcript]:
         conversations = list(
             await self._session.scalars(
                 select(Conversation)
-                .where(*_unstaged_conversation_predicates())
+                .where(*self._predicates())
                 .order_by(Conversation.id)
                 .limit(limit)
             )
@@ -114,7 +145,7 @@ class KnowledgeMiningRepository:
         )
         unprocessed = await self._session.scalar(
             select(func.count(Conversation.id)).where(
-                *_unstaged_conversation_predicates()
+                *self._predicates()
             )
         )
         return {
@@ -133,7 +164,7 @@ class KnowledgeMiningRepository:
     ) -> None:
         """Stage candidates; a rejected one is discarded with its reason and never promoted."""
 
-        reasons = list(rejections) or [None] * len(candidates)
+        reasons = list(rejections) if rejections else [None] * len(candidates)
         self._session.add_all(
             [
                 QAExtractionStaging(
@@ -182,7 +213,9 @@ class KnowledgeMiningRepository:
         )
         seen = {knowledge_identity(row.question, row.answer) for row in existing}
         knowledge_rows = await self._session.execute(
-            select(KnowledgeChunk.questions, KnowledgeChunk.answer)
+            select(KnowledgeChunk.questions, KnowledgeChunk.answer).where(
+                KnowledgeChunk.vectorize_status != "deleting"
+            )
         )
         seen.update(
             knowledge_identity(question, answer)

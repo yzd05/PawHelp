@@ -61,13 +61,20 @@ class BgeReranker:
     def rerank(
         self, query: str, chunks: Sequence[KnowledgeChunk], *, limit: int
     ) -> list[RerankedChunk]:
-        if not chunks:
+        if not chunks or limit <= 0:
             return []
+        unique_chunks: list[KnowledgeChunk] = []
+        seen_ids: set[object] = set()
+        for chunk in chunks:
+            key = chunk.id if getattr(chunk, "id", None) is not None else id(chunk)
+            if key not in seen_ids:
+                seen_ids.add(key)
+                unique_chunks.append(chunk)
         # Loading once is not enough: compute_score also mutates model tensors.
         # Serialize the full call across parallel queries and chat requests.
         with self._inference_lock:
             scores = self._load().compute_score(
-                [[query, vector_text(chunk)] for chunk in chunks],
+                [[query, vector_text(chunk)] for chunk in unique_chunks],
                 normalize=True,
             )
         if isinstance(scores, (int, float)):
@@ -75,7 +82,7 @@ class BgeReranker:
         ranked = sorted(
             (
                 RerankedChunk(chunk=chunk, score=float(score))
-                for chunk, score in zip(chunks, scores, strict=True)
+                for chunk, score in zip(unique_chunks, scores, strict=True)
             ),
             key=lambda item: item.score,
             reverse=True,

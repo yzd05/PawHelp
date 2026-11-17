@@ -34,7 +34,8 @@ class KnowledgeRepository:
     async def has_curated_knowledge(self) -> bool:
         count = await self._session.scalar(
             select(func.count(KnowledgeChunk.id)).where(
-                KnowledgeChunk.content_type.in_(CURATED_CONTENT_TYPES)
+                KnowledgeChunk.content_type.in_(CURATED_CONTENT_TYPES),
+                KnowledgeChunk.vectorize_status != "deleting",
             )
         )
         return bool(count)
@@ -50,14 +51,39 @@ class KnowledgeRepository:
         )
         return list(rows)
 
-    async def list_after_id(
-        self, *, after_id: int, limit: int
-    ) -> list[KnowledgeChunk]:
-        """Page through every authoritative chunk for a collection rebuild."""
+    async def list_deleting(self, *, limit: int) -> list[KnowledgeChunk]:
+        """Return tombstoned rows whose deletion was interrupted."""
 
         rows = await self._session.scalars(
             select(KnowledgeChunk)
-            .where(KnowledgeChunk.id > after_id)
+            .where(KnowledgeChunk.vectorize_status == "deleting")
+            .order_by(KnowledgeChunk.id)
+            .limit(limit)
+        )
+        return list(rows)
+
+    async def list_unvectorized(self, *, exclude_id: int | None = None) -> list[KnowledgeChunk]:
+        """Return live entries not yet searchable in Milvus for consistency checks."""
+
+        statement = select(KnowledgeChunk).where(
+            KnowledgeChunk.vectorize_status.in_(("pending", "failed"))
+        )
+        if exclude_id is not None:
+            statement = statement.where(KnowledgeChunk.id != exclude_id)
+        rows = await self._session.scalars(statement.order_by(KnowledgeChunk.id.desc()).limit(200))
+        return list(rows)
+
+    async def list_after_id(
+        self, *, after_id: int, limit: int
+    ) -> list[KnowledgeChunk]:
+        """Page through every live authoritative chunk for a collection rebuild."""
+
+        rows = await self._session.scalars(
+            select(KnowledgeChunk)
+            .where(
+                KnowledgeChunk.id > after_id,
+                KnowledgeChunk.vectorize_status != "deleting",
+            )
             .order_by(KnowledgeChunk.id)
             .limit(limit)
         )
@@ -87,6 +113,8 @@ class KnowledgeRepository:
         statement = select(KnowledgeChunk)
         if status is not None:
             statement = statement.where(KnowledgeChunk.vectorize_status == status)
+        else:
+            statement = statement.where(KnowledgeChunk.vectorize_status != "deleting")
         rows = await self._session.scalars(
             statement
             .order_by(KnowledgeChunk.id.desc())
@@ -111,7 +139,9 @@ class KnowledgeRepository:
     ) -> set[tuple[str, str]]:
         """Return lightweight identities used by dry-run and idempotent ingestion."""
 
-        statement = select(KnowledgeChunk.questions, KnowledgeChunk.answer)
+        statement = select(KnowledgeChunk.questions, KnowledgeChunk.answer).where(
+            KnowledgeChunk.vectorize_status != "deleting"
+        )
         if exclude_id is not None:
             statement = statement.where(KnowledgeChunk.id != exclude_id)
         result = await self._session.execute(statement)
@@ -172,17 +202,36 @@ class KnowledgeRepository:
 
         rows = await self._session.scalars(
             select(KnowledgeChunk)
-            .where(KnowledgeChunk.source_kind.not_in(("markdown", "faq_table")))
+            .where(
+                KnowledgeChunk.source_kind.not_in(("markdown", "faq_table")),
+                KnowledgeChunk.vectorize_status != "deleting",
+            )
             .order_by(KnowledgeChunk.id)
         )
         return list(rows)
 
     async def mark_pending(self, rows: Sequence[KnowledgeChunk]) -> None:
-        """Hide stale vectors from retrieval before replacing or deleting them."""
+        """Mark rows pending for fresh vectorization (e.g. after content edit or reconciliation)."""
 
         for row in rows:
             row.vector_id = None
             row.vectorize_status = "pending"
+        await self._session.flush()
+
+    async def mark_deleting(self, rows: Sequence[KnowledgeChunk]) -> None:
+        """Tombstone rows before Milvus deletion so interrupted deletes never resurrect."""
+
+        for row in rows:
+            row.vector_id = None
+            row.vectorize_status = "deleting"
+        await self._session.flush()
+
+    async def mark_failed(self, rows: Sequence[KnowledgeChunk]) -> None:
+        """Quarantine poison-pill rows so they do not head-of-line block pending writes."""
+
+        for row in rows:
+            row.vector_id = None
+            row.vectorize_status = "failed"
         await self._session.flush()
 
     async def delete_ids(self, chunk_ids: Sequence[int]) -> None:

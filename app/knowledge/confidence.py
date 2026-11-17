@@ -2,17 +2,31 @@
 from dataclasses import dataclass
 import hashlib
 import json
-from pathlib import Path
+import logging
 import math
+from pathlib import Path
 
 from app.prompts import QUERY_UNDERSTANDING_SYSTEM_TEMPLATE
 
+logger = logging.getLogger(__name__)
+
 _KNOWLEDGE_CODE = Path(__file__).resolve().parent
 # Everything that changes the evidence or scores the gate sees on the served path.
+# Deliberately decoupled from chat generation model ``openai_model`` so any
+# chat provider shares the calibrated relevance prefilter out of the box.
 SCORING_SOURCES = ("chunking.py", "embedding.py", "reranking.py", "search.py", "query_understanding.py", "pipeline.py")
-SCORING_SETTINGS = ("embedding_model", "embedding_max_length", "reranker_model", "reranker_query_max_length",
-                    "reranker_passage_max_length", "dense_recall_limit", "bm25_recall_limit", "rerank_limit",
-                    "rerank_top_k", "knowledge_rerank_threshold", "openai_model", "structured_output_method")
+SCORING_SETTINGS = (
+    "embedding_model",
+    "embedding_max_length",
+    "reranker_model",
+    "reranker_query_max_length",
+    "reranker_passage_max_length",
+    "dense_recall_limit",
+    "bm25_recall_limit",
+    "rerank_limit",
+    "rerank_top_k",
+    "knowledge_rerank_threshold",
+)
 
 
 def evidence_signals(evidence):
@@ -33,7 +47,7 @@ def _text_bytes(path):
 
 
 def scoring_fingerprint(root, settings):
-    """Bind a calibration to the documents, scoring code, rewrite prompt, models and limits."""
+    """Bind a calibration to the documents, scoring code, rewrite prompt, and retrieval parameters."""
     digest = hashlib.sha256()
     for path in sorted(Path(root).rglob("*.md")):
         digest.update(path.relative_to(root).as_posix().encode())
@@ -68,18 +82,34 @@ class EvidenceGate:
     def __init__(self, settings, root):
         self.path = Path(settings.evidence_calibration_path)
         self.fingerprint = scoring_fingerprint(root, settings)
+        self._cache: tuple[tuple[float, int] | None, float | Exception] = (None, OSError("unloaded"))
+
+    def _load_threshold(self) -> float:
+        stat = self.path.stat()
+        stamp = (stat.st_mtime, stat.st_size)
+        if self._cache[0] != stamp:
+            try:
+                data = json.loads(self.path.read_text(encoding="utf-8"))
+                if data["formula_version"] != 2 or data.get("purpose") != "relevance_prefilter":
+                    raise ValueError("校准公式版本不符")
+                if data.get("scoring_fingerprint") != self.fingerprint:
+                    raise ValueError("校准与当前评分输入不一致（知识文档、检索代码、改写提示词、检索模型或参数已变），需重新校准")
+                threshold = float(data["threshold"])
+                if not 0 <= threshold <= 1 or not data["validation"]["passed"]:
+                    raise ValueError("阈值或留出集验证无效")
+                self._cache = (stamp, threshold)
+            except (OSError, ValueError, KeyError, TypeError) as error:
+                logger.warning("evidence calibration inactive (%s): %s", self.path, error)
+                self._cache = (stamp, error)
+        cached = self._cache[1]
+        if isinstance(cached, Exception):
+            raise cached
+        return cached
 
     def check(self, evidence, *, legacy_confident):
         signals = evidence_signals(evidence)
         try:
-            data = json.loads(self.path.read_text(encoding="utf-8"))
-            if data["formula_version"] != 2 or data.get("purpose") != "relevance_prefilter":
-                raise ValueError("校准公式版本不符")
-            if data.get("scoring_fingerprint") != self.fingerprint:
-                raise ValueError("校准与当前评分输入不一致（知识文档、检索代码、改写提示词、模型或检索参数已变），需重新校准")
-            threshold = float(data["threshold"])
-            if not 0 <= threshold <= 1 or not data["validation"]["passed"]:
-                raise ValueError("阈值或留出集验证无效")
+            threshold = self._load_threshold()
             accepted = bool(evidence) and signals["score"] >= threshold
             return ConfidenceDecision(accepted, True, signals, threshold, "已校准证据评分" if accepted else "证据评分未达到校准阈值")
         except (OSError, ValueError, KeyError, TypeError) as error:

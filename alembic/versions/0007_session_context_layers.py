@@ -1,5 +1,6 @@
 """Append-only session summaries and safe final-answer tool badges."""
-from alembic import op
+
+from alembic import context, op
 import sqlalchemy as sa
 from sqlalchemy.dialects import mysql
 
@@ -9,28 +10,45 @@ branch_labels = None
 depends_on = None
 
 
+def _create_conversation_summaries() -> None:
+    op.create_table(
+        "conversation_summaries",
+        sa.Column("id", mysql.BIGINT(unsigned=True), primary_key=True, autoincrement=True),
+        sa.Column("conversation_id", mysql.BIGINT(unsigned=True), nullable=False),
+        sa.Column("seq", mysql.INTEGER(unsigned=True), nullable=False),
+        sa.Column("from_msg_id", mysql.BIGINT(unsigned=True), nullable=False),
+        sa.Column("upto_msg_id", mysql.BIGINT(unsigned=True), nullable=False),
+        sa.Column("content", sa.Text(), nullable=False),
+        sa.Column("created_at", mysql.DATETIME(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.ForeignKeyConstraint(["conversation_id"], ["conversations.id"]),
+        sa.UniqueConstraint("conversation_id", "seq", name="uk_conv_seq"),
+        mysql_engine="InnoDB",
+        mysql_charset="utf8mb4",
+    )
+    op.create_index("idx_conv_upto", "conversation_summaries", ["conversation_id", "upto_msg_id"])
+
+
 def upgrade() -> None:
+    conversation_columns = [
+        ("summary", sa.Text()),
+        ("summary_upto_msg_id", mysql.BIGINT(unsigned=True)),
+        ("layer1_from_msg_id", mysql.BIGINT(unsigned=True)),
+    ]
+    if context.is_offline_mode():
+        for name, kind in conversation_columns:
+            op.add_column("conversations", sa.Column(name, kind, nullable=True))
+        _create_conversation_summaries()
+        op.add_column("messages", sa.Column("tool_trace", mysql.JSON(), nullable=True))
+        return
+
     # Accept existing instances that applied the documented DDL; never erase data.
     inspector = sa.inspect(op.get_bind())
     columns = {item["name"] for item in inspector.get_columns("conversations")}
-    for name, kind in [("summary", sa.Text()), ("summary_upto_msg_id", mysql.BIGINT(unsigned=True)), ("layer1_from_msg_id", mysql.BIGINT(unsigned=True))]:
+    for name, kind in conversation_columns:
         if name not in columns:
             op.add_column("conversations", sa.Column(name, kind, nullable=True))
     if "conversation_summaries" not in inspector.get_table_names():
-        op.create_table(
-            "conversation_summaries",
-            sa.Column("id", mysql.BIGINT(unsigned=True), primary_key=True, autoincrement=True),
-            sa.Column("conversation_id", mysql.BIGINT(unsigned=True), nullable=False),
-            sa.Column("seq", mysql.INTEGER(unsigned=True), nullable=False),
-            sa.Column("from_msg_id", mysql.BIGINT(unsigned=True), nullable=False),
-            sa.Column("upto_msg_id", mysql.BIGINT(unsigned=True), nullable=False),
-            sa.Column("content", sa.Text(), nullable=False),
-            sa.Column("created_at", mysql.DATETIME(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
-            sa.ForeignKeyConstraint(["conversation_id"], ["conversations.id"]),
-            sa.UniqueConstraint("conversation_id", "seq", name="uk_conv_seq"),
-            mysql_charset="utf8mb4",
-        )
-        op.create_index("idx_conv_upto", "conversation_summaries", ["conversation_id", "upto_msg_id"])
+        _create_conversation_summaries()
     if "tool_trace" not in {item["name"] for item in inspector.get_columns("messages")}:
         op.add_column("messages", sa.Column("tool_trace", mysql.JSON(), nullable=True))
 

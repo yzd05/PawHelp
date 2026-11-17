@@ -1,8 +1,10 @@
 """Small local knowledge-console service over the existing RAG components."""
 
 import asyncio
-import json
+from collections.abc import Sequence
 from datetime import UTC, datetime
+import inspect
+import json
 from pathlib import Path
 import re
 from types import SimpleNamespace
@@ -13,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.database.models import KnowledgeChunk
 from app.knowledge.chunking import KnowledgeDraft, chunk_markdown
 from app.knowledge.confidence import kept_entries_sha256
-from app.knowledge.consistency import KnowledgeConsistencyChecker
+from app.knowledge.consistency import KnowledgeConsistencyChecker, lexical_overlap_score
 from app.knowledge.embedding import BgeM3Embedder
 from app.knowledge.mining import ConversationKnowledgeExtractor
 from app.knowledge.search import (
@@ -23,8 +25,7 @@ from app.knowledge.search import (
 )
 from app.knowledge.vector_store import MilvusKnowledgeStore, milvus_call
 from app.knowledge.vectorization import reconcile_missing_vectors, vectorize_pending
-from app.repositories.knowledge import KnowledgeRepository
-from app.repositories.knowledge import knowledge_identity
+from app.repositories.knowledge import KnowledgeRepository, knowledge_identity
 from app.repositories.knowledge_mining import KnowledgeMiningRepository
 from app.schemas import (
     KnowledgeMaterial,
@@ -33,11 +34,11 @@ from app.schemas import (
     KnowledgeOverview,
     KnowledgeRecheckFlag,
     KnowledgeSyncResult,
+    ManualKnowledgeRequest,
     MarkdownKnowledgeIngestResult,
     MarkdownKnowledgePreviewItem,
     MarkdownKnowledgePreviewResult,
     MarkdownKnowledgeRequest,
-    ManualKnowledgeRequest,
 )
 
 
@@ -77,9 +78,21 @@ def dual_write_is_consistent(
     mysql_total = sum(counts.values())
     return (
         counts.get("pending", 0) == 0
+        and counts.get("failed", 0) == 0
+        and counts.get("deleting", 0) == 0
         and counts.get("done", 0) == mysql_total
         and milvus_total == mysql_total
     )
+
+
+def _supports_extra_entries(checker: object) -> bool:
+    check_fn = getattr(checker, "check", None)
+    if not callable(check_fn):
+        return False
+    try:
+        return "extra_entries" in inspect.signature(check_fn).parameters
+    except (TypeError, ValueError):
+        return False
 
 
 class KnowledgeMaterialNotFound(ValueError):
@@ -130,6 +143,20 @@ class KnowledgeAdminService:
         self._consistency_checker = consistency_checker
         self._calibration_path = calibration_path
         self._mutation_lock = asyncio.Lock()
+
+    def count_materials(self) -> int:
+        """Count supported Markdown files without reading or chunking their contents."""
+
+        if not self._documents_root.exists():
+            return 0
+        total = 0
+        for path in self._documents_root.rglob("*.md"):
+            if not path.is_file():
+                continue
+            relative = path.relative_to(self._documents_root)
+            if relative.parts and relative.parts[0] in DIRECTORY_CONTENT_TYPES:
+                total += 1
+        return total
 
     def list_materials(self) -> list[KnowledgeMaterial]:
         """List only supported Markdown files below the configured root."""
@@ -217,6 +244,23 @@ class KnowledgeAdminService:
             ingestible_count=len(items) - duplicate_count,
         )
 
+    async def _load_unvectorized_entries(
+        self, *, exclude_id: int | None = None
+    ) -> list[KnowledgeChunk]:
+        if self._session_factory is None:
+            return []
+        try:
+            async with self._session_factory() as session:
+                if not hasattr(session, "scalars"):
+                    return []
+                repo = KnowledgeRepository(session)
+                list_fn = getattr(repo, "list_unvectorized", None)
+                if not callable(list_fn):
+                    return []
+                return await list_fn(exclude_id=exclude_id)
+        except Exception:
+            return []
+
     async def ingest_markdown(
         self, request: MarkdownKnowledgeRequest
     ) -> MarkdownKnowledgeIngestResult:
@@ -226,11 +270,17 @@ class KnowledgeAdminService:
         )
         async with self._session_factory() as session:
             existing = await KnowledgeRepository(session).list_identities()
-        candidates = [draft for draft, duplicate in zip(drafts, _duplicate_flags(drafts, existing), strict=True)
-                      if not duplicate]
-        blocked = {knowledge_identity(draft.questions, draft.answer)
-                   for draft, result in zip(candidates, await self._check_all(candidates), strict=True)
-                   if result.verdict != "new"}
+        candidates = [
+            draft
+            for draft, duplicate in zip(drafts, _duplicate_flags(drafts, existing), strict=True)
+            if not duplicate
+        ]
+        checks = await self._check_all(candidates, check_intra_batch=True)
+        blocked = {
+            knowledge_identity(draft.questions, draft.answer)
+            for draft, result in zip(candidates, checks, strict=True)
+            if result.verdict != "new"
+        }
         async with self._mutation_lock:
             async with self._session_factory() as session, session.begin():
                 repository = KnowledgeRepository(session)
@@ -283,9 +333,13 @@ class KnowledgeAdminService:
             )
         except Exception:
             milvus_total = None
+        materials_count = await asyncio.to_thread(self.count_materials)
+        live_mysql_total = sum(
+            count for status, count in counts.items() if status != "deleting"
+        )
         return KnowledgeOverview(
-            materials=len(self.list_materials()),
-            mysql_total=sum(counts.values()),
+            materials=materials_count,
+            mysql_total=live_mysql_total,
             pending_total=counts.get("pending", 0),
             done_total=done,
             milvus_total=milvus_total,
@@ -325,9 +379,29 @@ class KnowledgeAdminService:
                     vectorized=0,
                 )
             candidates = await self._conversation_extractor.extract(transcripts)
-            checks = await self._check_all(
-                [SimpleNamespace(questions=c.question, answer=c.answer) for c in candidates])
-            rejections = [None if result.verdict == "new" else result.message for result in checks]
+            seen_in_batch: set[tuple[str, str]] = set()
+            unique_indices: list[int] = []
+            unique_drafts: list[SimpleNamespace] = []
+            rejections: list[str | None] = [None] * len(candidates)
+            for idx, candidate in enumerate(candidates):
+                identity = knowledge_identity(candidate.question, candidate.answer)
+                if identity in seen_in_batch:
+                    rejections[idx] = "同批次重复问法与答案"
+                else:
+                    seen_in_batch.add(identity)
+                    unique_indices.append(idx)
+                    unique_drafts.append(
+                        SimpleNamespace(
+                            questions=candidate.question,
+                            answer=candidate.answer,
+                            section_path=f"conversation:{candidate.source_conversation_id}",
+                        )
+                    )
+            checks = await self._check_all(unique_drafts, check_intra_batch=True)
+            for idx, check_result in zip(unique_indices, checks, strict=True):
+                if check_result.verdict != "new":
+                    rejections[idx] = check_result.message
+
             batch_no = f"{datetime.now(UTC):%Y%m%d%H%M%S}-{uuid4().hex[:8]}"
             async with self._session_factory() as session, session.begin():
                 repository = KnowledgeMiningRepository(session)
@@ -380,6 +454,10 @@ class KnowledgeAdminService:
                     link_neighbors=False,
                     source_kind="manual",
                 )
+                chunk_id = rows[0].id
+            if self._embedder is not None and self._vector_store is not None:
+                await self._vectorize_pending_unlocked()
+                return await self._get_any_chunk(chunk_id)
         return rows[0]
 
     async def update_chunk(
@@ -414,7 +492,13 @@ class KnowledgeAdminService:
 
         if self._consistency_checker is None:
             return
-        result = await self._consistency_checker.check(question, answer, exclude_id=exclude_id)
+        unvectorized = await self._load_unvectorized_entries(exclude_id=exclude_id)
+        if unvectorized and _supports_extra_entries(self._consistency_checker):
+            result = await self._consistency_checker.check(
+                question, answer, exclude_id=exclude_id, extra_entries=unvectorized
+            )
+        else:
+            result = await self._consistency_checker.check(question, answer, exclude_id=exclude_id)
         if result.verdict == "unavailable":
             raise KnowledgeCheckUnavailable(result.message)
         if result.verdict == "duplicate":
@@ -422,33 +506,81 @@ class KnowledgeAdminService:
         if result.verdict == "conflict":
             raise KnowledgeConflictError(result.message)
 
-    async def _check_all(self, drafts, *, exclude_self: bool = False) -> list:
+    async def _check_all(
+        self,
+        drafts: Sequence[object],
+        *,
+        exclude_self: bool = False,
+        check_intra_batch: bool = False,
+    ) -> list:
         """Check entries before any write; one unavailable check aborts the whole batch."""
 
         if self._consistency_checker is None or not drafts:
             return [SimpleNamespace(verdict="new")] * len(drafts)
+        unvectorized = await self._load_unvectorized_entries() if not exclude_self else []
+        supports_extra = _supports_extra_entries(self._consistency_checker)
         limit = asyncio.Semaphore(4)
+        results: list[object | None] = [None] * len(drafts)
+        events = [asyncio.Event() for _ in drafts]
 
-        async def check(draft):
-            async with limit:
-                return await self._consistency_checker.check(
-                    draft.questions, draft.answer, exclude_id=draft.id if exclude_self else None)
+        async def check_index(index: int, draft: object) -> None:
+            try:
+                prior_peers: list[object] = []
+                if check_intra_batch and supports_extra:
+                    overlapping = [
+                        prior_idx
+                        for prior_idx in range(index)
+                        if lexical_overlap_score(draft.questions, draft.answer, drafts[prior_idx]) >= 2
+                    ]
+                    for prior_idx in overlapping:
+                        await events[prior_idx].wait()
+                        prior_res = results[prior_idx]
+                        if prior_res is not None and getattr(prior_res, "verdict", None) == "new":
+                            peer = drafts[prior_idx]
+                            prior_peers.append(
+                                SimpleNamespace(
+                                    id=-(prior_idx + 1),
+                                    source_kind="batch",
+                                    section_path=getattr(peer, "section_path", None) or peer.questions,
+                                    questions=peer.questions,
+                                    answer=peer.answer,
+                                )
+                            )
+                extras = [*unvectorized, *prior_peers]
+                async with limit:
+                    exclude_id = getattr(draft, "id", None) if exclude_self else None
+                    if extras and supports_extra:
+                        results[index] = await self._consistency_checker.check(
+                            draft.questions,
+                            draft.answer,
+                            exclude_id=exclude_id,
+                            extra_entries=extras,
+                        )
+                    else:
+                        results[index] = await self._consistency_checker.check(
+                            draft.questions,
+                            draft.answer,
+                            exclude_id=exclude_id,
+                        )
+            finally:
+                events[index].set()
 
-        results = await asyncio.gather(*(check(draft) for draft in drafts))
-        unavailable = next((result for result in results if result.verdict == "unavailable"), None)
+        await asyncio.gather(*(check_index(i, draft) for i, draft in enumerate(drafts)))
+        unavailable = next((result for result in results if result.verdict == "unavailable"), None)  # type: ignore[union-attr]
         if unavailable is not None:
-            raise KnowledgeCheckUnavailable(unavailable.message)
-        return results
+            raise KnowledgeCheckUnavailable(unavailable.message)  # type: ignore[union-attr]
+        return list(results)
 
     async def delete_chunk(self, chunk_id: int) -> None:
-        """Hide, delete from Milvus, then remove the MySQL authority row."""
+        """Tombstone, delete from Milvus, then remove the MySQL authority row."""
 
         async with self._mutation_lock:
             async with self._session_factory() as session, session.begin():
                 repository = KnowledgeRepository(session)
                 row = await repository.get_by_id(chunk_id)
                 if row is not None:
-                    await repository.mark_pending([row])
+                    mark_fn = getattr(repository, "mark_deleting", repository.mark_pending)
+                    await mark_fn([row])
             await milvus_call(self._vector_store.delete, [str(chunk_id)])
             async with self._session_factory() as session, session.begin():
                 await KnowledgeRepository(session).delete_ids([chunk_id])
@@ -465,7 +597,9 @@ class KnowledgeAdminService:
                 repository = KnowledgeRepository(session)
                 stale_rows = await repository.list_replaceable_imports()
                 stale_ids = [row.id for row in stale_rows]
-                await repository.mark_pending(stale_rows)
+                if stale_rows:
+                    mark_fn = getattr(repository, "mark_deleting", repository.mark_pending)
+                    await mark_fn(stale_rows)
 
             await milvus_call(
                 self._vector_store.delete,

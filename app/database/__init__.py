@@ -4,7 +4,6 @@ from app.database.base import Base
 from app.database.models import (
     Conversation,
     FaithCase,
-    FAQ,
     KnowledgeChunk,
     LowConfidenceQuestion,
     Message,
@@ -17,7 +16,6 @@ __all__ = [
     "Base",
     "Conversation",
     "FaithCase",
-    "FAQ",
     "KnowledgeChunk",
     "LowConfidenceQuestion",
     "Message",

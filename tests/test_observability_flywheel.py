@@ -209,11 +209,14 @@ def test_calibration_holdout_and_version_guard(tmp_path):
     gate=EvidenceGate(settings,corpus)
     assert gate.check(rows[1]["evidence"],legacy_confident=False).accepted
     assert not gate.check(rows[0]["evidence"],legacy_confident=True).accepted
-    # Any input that shifts scores retires the calibration, not only the documents or the reranker.
+    # Retrieval parameters that shift prefilter scores retire calibration, while switching chat models keeps it active.
     for key, value in (("reranker_model", "changed"), ("rerank_limit", settings.rerank_limit + 1),
-                       ("openai_model", "another-rewrite-model")):
+                       ("embedding_model", "changed-embedder"), ("rerank_top_k", settings.rerank_top_k + 1)):
         changed = settings.model_copy(update={key: value})
         assert not EvidenceGate(changed,corpus).check([],legacy_confident=False).calibrated, key
+    for chat_model in ("deepseek-chat", "gpt-4o", "qwen-max"):
+        switched = settings.model_copy(update={"openai_model": chat_model})
+        assert EvidenceGate(switched, corpus).check([], legacy_confident=False).calibrated, chat_model
     (corpus/"policy.md").write_text("a new rule", encoding="utf-8")
     assert not EvidenceGate(settings,corpus).check([],legacy_confident=False).calibrated
 

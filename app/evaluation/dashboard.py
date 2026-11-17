@@ -32,9 +32,16 @@ def _label_snapshot(directory, digest, artifact):
         if hashlib.sha256(raw).hexdigest() != digest:
             continue
         data = json.loads(raw)
-        if any(data.get(key) != artifact.get(key) for key in (
-            "reranker_model", "scoring_fingerprint", "dataset_sha256",
-        )):
+        allowed_fingerprints = {
+            value
+            for value in (artifact.get("scoring_fingerprint"), artifact.get("legacy_scoring_fingerprint"))
+            if value is not None
+        }
+        if (
+            data.get("reranker_model") != artifact.get("reranker_model")
+            or data.get("dataset_sha256") != artifact.get("dataset_sha256")
+            or data.get("scoring_fingerprint") not in allowed_fingerprints
+        ):
             raise ValueError("标注快照的评分输入 / 数据集与校准记录不一致")
         rows = data["rows"]
         if not isinstance(rows, list) or not rows or any(type(r.get("sufficient")) is not bool for r in rows):

@@ -117,10 +117,14 @@ def recall_at_k(
 
 
 def reciprocal_rank(
-    retrieved_ids: Sequence[int], relevant_ids: Sequence[int]
+    retrieved_ids: Sequence[int],
+    relevant_ids: Sequence[int],
+    *,
+    k: int | None = None,
 ) -> float:
     relevant = set(relevant_ids)
-    for rank, chunk_id in enumerate(retrieved_ids, start=1):
+    window = retrieved_ids[:k] if k is not None else retrieved_ids
+    for rank, chunk_id in enumerate(window, start=1):
         if chunk_id in relevant:
             return 1.0 / rank
     return 0.0
@@ -132,20 +136,20 @@ def group_retrieval_scores(
     *,
     k: int,
 ) -> tuple[float, float]:
-    """Score each required evidence group once; IDs within a group are alternatives."""
+    """Score each required evidence group once within the unified Top-K window."""
 
     if not groups:
         return 0.0, 0.0
     ranks = [
         next(
-            (rank for rank, chunk_id in enumerate(retrieved_ids, 1) if chunk_id in group),
+            (rank for rank, chunk_id in enumerate(retrieved_ids[:k], 1) if chunk_id in group),
             0,
         )
         for group in groups
     ]
     return (
         sum(0 < rank <= k for rank in ranks) / len(ranks),
-        sum(1.0 / rank for rank in ranks if rank) / len(ranks),
+        sum(1.0 / rank for rank in ranks if 0 < rank <= k) / len(ranks),
     )
 
 
@@ -241,16 +245,21 @@ def load_cases(path: Path) -> list[EvalCase]:
 
 
 class CachedQueryPlanner:
-    """Reuse one query-understanding call across the four retrieval strategies."""
+    """Reuse one query-understanding call across concurrent strategy retrievals."""
 
     def __init__(self, delegate) -> None:
         self._delegate = delegate
         self._cache: dict[str, QueryPlan] = {}
+        self._locks: dict[str, asyncio.Lock] = {}
 
     async def understand(self, query: str) -> QueryPlan:
-        if query not in self._cache:
-            self._cache[query] = await self._delegate.understand(query)
-        return self._cache[query]
+        if query in self._cache:
+            return self._cache[query]
+        lock = self._locks.setdefault(query, asyncio.Lock())
+        async with lock:
+            if query not in self._cache:
+                self._cache[query] = await self._delegate.understand(query)
+            return self._cache[query]
 
 
 class RetrievalQualityEvaluator:
@@ -263,6 +272,8 @@ class RetrievalQualityEvaluator:
         structured_output_method: str,
         judge_model: str,
         top_k: int = 10,
+        metric_k: int = 5,
+        concurrency: int = 5,
         call_timeout_seconds: float = 45.0,
         retry_delay_seconds: float = 2.0,
         evidence_checker: EvidenceSufficiencyChecker | None = None,
@@ -276,6 +287,8 @@ class RetrievalQualityEvaluator:
         self._judge_model = judge_model
         self._evidence_pipeline = evidence_pipeline
         self._top_k = top_k
+        self._metric_k = max(1, metric_k)
+        self._concurrency = max(1, concurrency)
         self._call_timeout_seconds = call_timeout_seconds
         self._retry_delay_seconds = retry_delay_seconds
         self._evaluation_source_paths = tuple(evaluation_source_paths) if evaluation_source_paths is not None else None
@@ -292,15 +305,16 @@ class RetrievalQualityEvaluator:
         generation_strategies: Sequence[RetrievalStrategy] | None = None,
     ) -> dict[str, object]:
         resolved, corpus_chunk_ids = await self._resolve_ground_truth(cases)
-        jobs = []
-        for case in cases:
+        semaphore = asyncio.Semaphore(self._concurrency)
+        search_options = {"allowed_chunk_ids": corpus_chunk_ids} if corpus_chunk_ids is not None else {}
+
+        async def prepare_job(case: EvalCase, strategy: RetrievalStrategy):
             ground_truth = resolved[case.case_id]
-            for strategy in strategies:
-                search_options = {"allowed_chunk_ids": corpus_chunk_ids} if corpus_chunk_ids is not None else {}
-                should_generate = generate_answers and (
-                    case.expected_answerable or strategy is RetrievalStrategy.HYBRID_RERANK
-                ) and (generation_strategies is None or strategy in generation_strategies)
-                confidence = None
+            should_generate = generate_answers and (
+                case.expected_answerable or strategy is RetrievalStrategy.HYBRID_RERANK
+            ) and (generation_strategies is None or strategy in generation_strategies)
+            confidence = None
+            async with semaphore:
                 if self._evidence_pipeline is not None and strategy is RetrievalStrategy.HYBRID_RERANK and should_generate:
                     retrieval = await self._evidence_pipeline.retrieve(
                         case.query, categories=case.categories, content_types=case.content_types, **search_options
@@ -311,16 +325,13 @@ class RetrievalQualityEvaluator:
                         case.query, strategy=strategy, limit=self._top_k,
                         categories=case.categories, content_types=case.content_types, **search_options,
                     )
-                jobs.append(
-                    (
-                        case,
-                        ground_truth,
-                        result,
-                        should_generate,
-                        confidence,
-                    )
-                )
-        semaphore = asyncio.Semaphore(5)
+            return (case, ground_truth, result, should_generate, confidence)
+
+        jobs = list(
+            await asyncio.gather(
+                *(prepare_job(case, strategy) for case in cases for strategy in strategies)
+            )
+        )
 
         async def score_job(
             job
@@ -404,7 +415,8 @@ class RetrievalQualityEvaluator:
         generate_answer: bool,
         evidence_confidence: dict | None = None,
     ) -> CaseResult:
-        retrieved_ids = [match.chunk.id for match in result.matches]
+        eval_k = min(self._metric_k, self._top_k)
+        retrieved_ids = [match.chunk.id for match in result.matches[:eval_k]]
         citations = [
             {
                 "n": index,
@@ -414,10 +426,10 @@ class RetrievalQualityEvaluator:
                 "answer": match.chunk.answer,
                 "score": match.score,
             }
-            for index, match in enumerate(result.matches, start=1)
+            for index, match in enumerate(result.matches[:eval_k], start=1)
         ]
         if evidence_confidence is not None:
-            citations = self._evidence_pipeline.evidence(result.matches)
+            citations = self._evidence_pipeline.evidence(result.matches[:eval_k])
         evidence_text = "\n".join(str(item["answer"]) for item in citations)
         evidence_coverage = point_coverage(evidence_text, case.expected_points)
         answer = ""
@@ -508,11 +520,11 @@ class RetrievalQualityEvaluator:
                 ledger_error = type(error).__name__
         relevant_ids = ground_truth.chunk_ids
         recall, rank_score = (
-            group_retrieval_scores(retrieved_ids, ground_truth.groups, k=5)
+            group_retrieval_scores(retrieved_ids, ground_truth.groups, k=eval_k)
             if ground_truth.groups
             else (
-                recall_at_k(retrieved_ids, relevant_ids, k=5),
-                reciprocal_rank(retrieved_ids, relevant_ids),
+                recall_at_k(retrieved_ids, relevant_ids, k=eval_k),
+                reciprocal_rank(retrieved_ids, relevant_ids, k=eval_k),
             )
         )
         return CaseResult(

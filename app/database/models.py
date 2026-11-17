@@ -113,21 +113,6 @@ class Message(Base):
     created_at: Mapped[datetime] = _created_at()
 
 
-class FAQ(Base):
-    """A manually entered FAQ that can be imported into the knowledge base."""
-
-    __tablename__ = "faq"
-
-    id: Mapped[int] = mapped_column(
-        BIGINT(unsigned=True), primary_key=True, autoincrement=True
-    )
-    question: Mapped[str] = mapped_column(VARCHAR(512), nullable=False)
-    answer: Mapped[str] = mapped_column(Text, nullable=False)
-    category: Mapped[str] = mapped_column(VARCHAR(64), nullable=False)
-    created_at: Mapped[datetime] = _created_at()
-    updated_at: Mapped[datetime] = _updated_at()
-
-
 class Ticket(Base):
     """A human-support escalation created from a trusted tool call."""
 
@@ -256,7 +241,7 @@ class KnowledgeChunk(Base):
     )
     vector_id: Mapped[str | None] = mapped_column(VARCHAR(64), nullable=True)
     vectorize_status: Mapped[str] = mapped_column(
-        ENUM("pending", "done"),
+        ENUM("pending", "done", "failed", "deleting"),
         nullable=False,
         server_default=text("'pending'"),
     )
@@ -327,7 +312,11 @@ class ReviewQueue(Base):
     occurrence_count: Mapped[int] = mapped_column(INTEGER(unsigned=True), nullable=False, server_default=text("1"))
     review_status: Mapped[str] = mapped_column(ENUM("待审", "通过", "驳回"), nullable=False, server_default=text("'待审'"))
     approved_answer: Mapped[str | None] = mapped_column(Text, nullable=True)
-    published_chunk_id: Mapped[int | None] = mapped_column(BIGINT(unsigned=True), nullable=True)
+    published_chunk_id: Mapped[int | None] = mapped_column(
+        BIGINT(unsigned=True),
+        ForeignKey("knowledge_chunks.id", name="fk_review_published_chunk", ondelete="SET NULL"),
+        nullable=True,
+    )
     publication_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = _created_at()
     updated_at: Mapped[datetime] = _updated_at()
@@ -393,13 +382,13 @@ class FaithCase(Base):
 # Preserve the approved DDL names and avoid ORM-generated index names.
 Index("idx_user_id", Conversation.user_id)
 Index("idx_conversation_id", Message.conversation_id)
-Index("idx_category", FAQ.category)
 Index("idx_conversation_id", Ticket.conversation_id)
 Index("idx_refund_conversation_id", RefundRequest.conversation_id)
 Index("idx_category", KnowledgeChunk.category)
 Index("idx_vectorize_status", KnowledgeChunk.vectorize_status)
 Index("idx_source_kind", KnowledgeChunk.source_kind)
 Index("idx_batch_no", QAExtractionStaging.batch_no)
+Index("idx_qa_staging_source_ref", QAExtractionStaging.source_ref)
 Index("idx_status", QAExtractionStaging.status)
 Index("idx_source", LowConfidenceQuestion.source)
 Index("idx_created_at", LowConfidenceQuestion.created_at)
