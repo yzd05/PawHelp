@@ -176,7 +176,9 @@ def knowledge_router(
                 page=page,
                 page_size=page_size,
             )
-            all_total = sum(counts.values())
+            all_total = sum(
+                count for key, count in counts.items() if key != "deleting"
+            )
             total = all_total if status is None else counts.get(status, 0)
             return KnowledgeChunkPage(
                 items=[KnowledgeChunkView.model_validate(row) for row in rows],

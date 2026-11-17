@@ -239,8 +239,20 @@ def create_app(
     flywheel = Flywheel(
         active_settings, active_session_factory, flywheel_model, active_knowledge_admin
     )
+    pipeline_kwargs = _evaluation_runner_kwargs(
+        EvaluationPipeline,
+        {
+            "embedder": embedder,
+            "reranker": reranker,
+            "vector_store": vector_store,
+        },
+    )
     pipeline = EvaluationPipeline(
-        active_settings, active_session_factory, PROJECT_ROOT, rag_eval_lock
+        active_settings,
+        active_session_factory,
+        PROJECT_ROOT,
+        rag_eval_lock,
+        **pipeline_kwargs,
     )
     scheduled = ScheduledOperations(
         active_settings, active_session_factory, flywheel, pipeline
