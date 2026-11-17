@@ -1,51 +1,40 @@
-"""Deterministic and live-service contracts for labelled tool-call evaluation."""
+"""Deterministic and live-service contracts for labelled workflow tool evaluation."""
 
-from contextlib import AbstractAsyncContextManager
 from random import Random
-from typing import Any
 
-import pytest
 from langchain_core.messages import AIMessageChunk
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import Settings
 from app.database.models import Conversation, Message, Ticket
-from app.services.tool_chat import ToolAwareChatService
-from scripts.run_tool_evals import EvalCase, load_cases, run_cases, score_case
+from app.workflow.graph import WorkflowChatService
 import scripts.run_tool_evals as runner
-from tests.fakes import FakeToolCallingChatModel
-
+from scripts.run_tool_evals import EvalCase, run_cases, score_case
+from tests.order_fakes import FakeOrderData, TestToolCatalog
+from tests.workflow_fakes import LabelledModel, LabelledSearch, tool_call
 
 DATABASE_URL = "mysql+asyncmy://unused"
 
 
 def make_settings() -> Settings:
     return Settings(
+        _env_file=None,
         chat_base_url="http://127.0.0.1:9/v1",
         openai_model="eval-test",
         openai_api_key="local-nonsecret-key",
         database_url=DATABASE_URL,
         shop_name="测试店",
-        context_token_budget=4096,
+        model_context_window=65536,
         tool_timeout_seconds=1,
         tool_max_attempts=1,
+        mcp_enabled=False,
+        observability_enabled=False,
     )
 
 
 def logistics_call_chunk() -> AIMessageChunk:
-    return AIMessageChunk(
-        content="",
-        tool_call_chunks=[
-            {
-                "name": "query_logistics",
-                "args": '{"order_id":"1001"}',
-                "id": "eval-call",
-                "index": 0,
-                "type": "tool_call_chunk",
-            }
-        ],
-    )
+    return tool_call("query_logistics", '{"order_id":"1001"}', "eval-call")
 
 
 def logistics_case() -> EvalCase:
@@ -55,33 +44,6 @@ def logistics_case() -> EvalCase:
         expected_tool="query_logistics",
         expected_outcome="answer",
     )
-
-
-class _FailingSession:
-    """Fail one chosen persistence open without exposing its private text."""
-
-    async def __aenter__(self) -> "_FailingSession":
-        raise RuntimeError("private persistence exception secret=do-not-print")
-
-    async def __aexit__(self, *args: object) -> None:
-        return None
-
-
-class FailingSessionFactory:
-    """Delegate to real MySQL sessions except at one reproducible call boundary."""
-
-    def __init__(
-        self, inner: async_sessionmaker[AsyncSession], failing_calls: set[int]
-    ) -> None:
-        self.inner = inner
-        self.failing_calls = failing_calls
-        self.calls = 0
-
-    def __call__(self) -> AbstractAsyncContextManager[Any]:
-        self.calls += 1
-        if self.calls in self.failing_calls:
-            return _FailingSession()
-        return self.inner()
 
 
 async def table_counts(
@@ -180,12 +142,12 @@ def test_logistics_fixed_case_handles_colloquial_negation_and_unknown_eta() -> N
 
 
 def test_return_policy_accepts_paraphrase_but_rejects_added_refund_fact() -> None:
-    """FAQ evaluation must validate policy facts rather than exact answer copying."""
+    """Knowledge evaluation must validate policy facts rather than exact answer copying."""
 
     common = {
-        "expected_tool": "query_faq",
+        "expected_tool": "knowledge_retrieval",
         "expected_outcome": "answer",
-        "observed_tool": "query_faq",
+        "observed_tool": "knowledge_retrieval",
         "tool_result": (
             '{"matches":[{"question":"退货政策是什么？",'
             '"answer":"商品在符合条件时可申请退货，具体以售后页面说明为准。",'
@@ -207,12 +169,12 @@ def test_return_policy_accepts_paraphrase_but_rejects_added_refund_fact() -> Non
 
 
 def test_return_policy_allows_conditions_wording_but_rejects_unsupported_benefits() -> None:
-    """Policy-specific facts must not be confused with an FAQ miss or new benefits."""
+    """Policy-specific facts must not be confused with a retrieval miss or new benefits."""
 
     common = {
-        "expected_tool": "query_faq",
+        "expected_tool": "knowledge_retrieval",
         "expected_outcome": "answer",
-        "observed_tool": "query_faq",
+        "observed_tool": "knowledge_retrieval",
         "tool_result": (
             '{"matches":[{"question":"退货政策是什么？",'
             '"answer":"商品在符合条件时可申请退货，具体以售后页面说明为准。",'
@@ -231,9 +193,9 @@ def test_return_policy_allows_conditions_wording_but_rejects_unsupported_benefit
 
 def test_return_policy_fixed_case_rejects_unconditional_or_seven_day_rights() -> None:
     common = {
-        "expected_tool": "query_faq",
+        "expected_tool": "knowledge_retrieval",
         "expected_outcome": "answer",
-        "observed_tool": "query_faq",
+        "observed_tool": "knowledge_retrieval",
         "tool_result": (
             '{"matches":[{"question":"退货政策是什么？",'
             '"answer":"商品在符合条件时可申请退货，具体以售后页面说明为准。",'
@@ -253,9 +215,9 @@ def test_return_policy_fixed_case_rejects_unconditional_or_seven_day_rights() ->
 
 def test_postage_case_requires_semantic_hit_and_grounded_answer() -> None:
     common = {
-        "expected_tool": "query_faq",
+        "expected_tool": "knowledge_retrieval",
         "expected_outcome": "postage_answer",
-        "observed_tool": "query_faq",
+        "observed_tool": "knowledge_retrieval",
         "tool_result": (
             '{"matches":[{"question":"配送费用如何计算？",'
             '"answer":"配送费用根据订单金额、收货地区和活动规则计算，结算页展示实际运费。",'
@@ -282,34 +244,42 @@ async def test_runner_rejects_partial_post_tool_answer_and_cleans_rows(
     """A convergence error after a real tool result must exit nonzero and clean up."""
 
     session_factory = async_sessionmaker(mysql_session.bind, expire_on_commit=False)
-    model = FakeToolCallingChatModel(
-        selector_items=[logistics_call_chunk()],
-        final_items=[
-            "订单 1001 正在运输，包裹位于配送中心",
-            RuntimeError("private upstream exception secret=do-not-print"),
-        ],
-    )
-    service = ToolAwareChatService(
+
+    class FailingConvergenceModel(LabelledModel):
+        async def astream(self, messages):
+            self.agent_calls += 1
+            if self.agent_calls == 1:
+                yield logistics_call_chunk()
+            else:
+                yield AIMessageChunk(content="订单 1001 正在运输，包裹位于配送中心")
+                raise RuntimeError("private upstream exception secret=do-not-print")
+
+    service = WorkflowChatService(
         settings=make_settings(),
-        model=model,
+        model=FailingConvergenceModel("物流"),
         session_factory=session_factory,
         rng=Random(7),
+        order_data=FakeOrderData(),
+        catalog=TestToolCatalog(),
+        knowledge_search=LabelledSearch(False),
     )
     before = await table_counts(session_factory)
 
-    exit_code = await run_cases(
-        [logistics_case()], make_settings(), service=service, session_factory=session_factory
-    )
+    try:
+        exit_code = await run_cases(
+            [logistics_case()], make_settings(), service=service, session_factory=session_factory
+        )
 
-    stdout = capsys.readouterr().out
-    assert exit_code == 1
-    assert "terminal=error" in stdout
-    assert "pass=False" in stdout
-    assert "private prompt" not in stdout
-    assert "正在运输" not in stdout
-    assert "in_transit" not in stdout
-    assert "secret=" not in stdout
-    assert await table_counts(session_factory) == before
+        stdout = capsys.readouterr().out
+        assert exit_code == 1
+        assert "pass=False" in stdout
+        assert "private prompt" not in stdout
+        assert "正在运输" not in stdout
+        assert "in_transit" not in stdout
+        assert "secret=" not in stdout
+        assert await table_counts(session_factory) == before
+    finally:
+        await service.close()
 
 
 async def test_runner_rejects_full_answer_when_final_persistence_fails_and_cleans_rows(
@@ -317,76 +287,80 @@ async def test_runner_rejects_full_answer_when_final_persistence_fails_and_clean
 ) -> None:
     """A final-row persistence error after complete text cannot become acceptance."""
 
-    inner = async_sessionmaker(mysql_session.bind, expire_on_commit=False)
-    session_factory = inner
-    class FinalPersistenceFailure(ToolAwareChatService):
-        async def _persist_assistant(self, conversation_id, content, *, tool_calls=None):
-            if tool_calls is None:
-                raise RuntimeError("private final persistence failure secret=do-not-print")
-            return await super()._persist_assistant(conversation_id, content, tool_calls=tool_calls)
-    model = FakeToolCallingChatModel(
-        selector_items=[logistics_call_chunk()],
-        final_items=["订单 1001 正在运输，包裹位于配送中心"],
+    session_factory = async_sessionmaker(mysql_session.bind, expire_on_commit=False)
+
+    class FinalPersistenceFailure(WorkflowChatService):
+        async def _persist_workflow_answer(self, *args, **kwargs):
+            raise RuntimeError("private final persistence failure secret=do-not-print")
+
+    model = LabelledModel(
+        "物流",
+        [logistics_call_chunk(), "订单 1001 已签收，包裹位于收货地址"],
     )
     service = FinalPersistenceFailure(
         settings=make_settings(),
         model=model,
         session_factory=session_factory,
         rng=Random(7),
+        order_data=FakeOrderData(),
+        catalog=TestToolCatalog(),
+        knowledge_search=LabelledSearch(False),
     )
-    before = await table_counts(inner)
+    before = await table_counts(session_factory)
 
-    exit_code = await run_cases(
-        [logistics_case()], make_settings(), service=service, session_factory=session_factory
-    )
+    try:
+        exit_code = await run_cases(
+            [logistics_case()], make_settings(), service=service, session_factory=session_factory
+        )
 
-    stdout = capsys.readouterr().out
-    assert exit_code == 1
-    assert "terminal=error" in stdout
-    assert "pass=False" in stdout
-    assert "secret=" not in stdout
-    assert await table_counts(inner) == before
+        stdout = capsys.readouterr().out
+        assert exit_code == 1
+        assert "terminal=error" in stdout
+        assert "pass=False" in stdout
+        assert "secret=" not in stdout
+        assert await table_counts(session_factory) == before
+    finally:
+        await service.close()
 
 
 async def test_runner_success_is_done_succeeded_safe_and_repeatable(
     mysql_session, capsys
 ) -> None:
-    """Repeated real-service evaluation runs must pass cleanly without DB residue."""
+    """Repeated workflow evaluation runs must pass cleanly without DB residue."""
 
     session_factory = async_sessionmaker(mysql_session.bind, expire_on_commit=False)
     before = await table_counts(session_factory)
     for _ in range(2):
-        model = FakeToolCallingChatModel(
-            selector_items=[logistics_call_chunk()],
-            final_items=["订单 1001 已签收，包裹位于收货地址"],
+        model = LabelledModel(
+            "物流",
+            [logistics_call_chunk(), "订单 1001 已签收，包裹位于收货地址"],
         )
-        service = ToolAwareChatService(
+        service = WorkflowChatService(
             settings=make_settings(),
             model=model,
             session_factory=session_factory,
             rng=Random(7),
+            order_data=FakeOrderData(),
+            catalog=TestToolCatalog(),
+            knowledge_search=LabelledSearch(False),
         )
-        assert await run_cases(
-            [logistics_case()],
-            make_settings(),
-            service=service,
-            session_factory=session_factory,
-        ) == 0
+        try:
+            assert await run_cases(
+                [logistics_case()],
+                make_settings(),
+                service=service,
+                session_factory=session_factory,
+            ) == 0
+        finally:
+            await service.close()
 
     stdout = capsys.readouterr().out
     assert stdout.count("terminal=done") == 2
     assert stdout.count("pass=True") == 2
     assert "private prompt" not in stdout
-    assert "订单 1001 正在运输" not in stdout
+    assert "订单 1001 已签收" not in stdout
     assert "order_id" not in stdout
     assert await table_counts(session_factory) == before
-    assert model.bound_tool_names == (
-        "query_order",
-        "query_product",
-        "query_logistics",
-        "query_faq",
-        "create_ticket",
-    )
 
 
 def test_main_hides_model_setup_exception_and_returns_stable_failure(

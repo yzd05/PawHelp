@@ -86,7 +86,7 @@ async def test_recall_uses_owned_summary_and_does_not_cross_conversations(contex
     service = WorkflowChatService(settings=settings(model_context_window=100000), model=model,
         session_factory=context_sessions, order_data=FakeOrderData(), catalog=TestToolCatalog(),
         knowledge_search=LabelledSearch(True))
-    caplog.set_level("INFO", logger="app.workflow.memory")
+    caplog.set_level("DEBUG", logger="app.workflow.memory")
     try:
         for cid in [first.id, other.id]:
             prepared = await service.prepare_turn(ChatRequest(user_id=user, conversation_id=cid, message="我之前查询的是哪个订单"))

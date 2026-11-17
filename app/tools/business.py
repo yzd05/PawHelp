@@ -9,8 +9,8 @@ from random import Random
 from langchain_core.tools import BaseTool, tool
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.knowledge.search import KnowledgeSearch
 from app.database.models import Conversation
+from app.knowledge.search import KnowledgeSearch
 from app.repositories.orders import OrderNotFound
 from app.repositories.tickets import TicketRepository
 from app.services.orders import OrderData
@@ -37,9 +37,16 @@ def _encode(payload: dict[str, object]) -> str:
 
 
 def _normalized(value: str) -> str:
-    """Collapse incidental whitespace before deriving an idempotency identity."""
+    """Collapse incidental whitespace before deriving a deterministic identity."""
 
     return " ".join(value.split()).casefold()
+
+
+def _product_seed(product: str) -> int:
+    """Derive a stable demo seed from the normalized product name."""
+
+    digest = hashlib.sha256(f"product-demo:{_normalized(product)}".encode("utf-8")).digest()
+    return int.from_bytes(digest[:8], "big")
 
 
 def _ticket_no(conversation_id: int, description: str, ticket_type: str) -> str:
@@ -84,24 +91,30 @@ def build_business_tools(runtime: ToolRuntime) -> list[BaseTool]:
 
     @tool(args_schema=ProductArgs)
     async def query_product(product: str) -> str:
-        """Look up demonstration availability using a product name."""
+        """Look up deterministic demonstration availability using a product name."""
 
+        product_rng = Random(_product_seed(product))
         return _encode(
             {
-                "product": product,
-                "availability": runtime.rng.choice(("in_stock", "limited", "preorder")),
-                "stock": runtime.rng.randint(1, 99),
+                "product": product.strip(),
+                "availability": product_rng.choice(("in_stock", "limited", "preorder")),
+                "stock": product_rng.randint(1, 99),
+                "is_demo": True,
             }
         )
 
     @tool(args_schema=LogisticsArgs)
     async def query_logistics(tracking_no: str | None = None, order_id: str | None = None) -> str:
-        """用 query_order 返回的 tracking_no 查询当前用户的物流状态及轨迹。兼容旧 order_id 调用。无物流时不会生成运单。"""
+        """用 query_order 返回的运单号查询当前用户的物流状态及轨迹。兼容旧 order_id 调用。无物流时不会生成运单。"""
 
         try:
-            return _encode(await orders.get_logistics(
-                await trusted_user_id(), order_id=order_id, tracking_no=tracking_no,
-            ))
+            return _encode(
+                await orders.get_logistics(
+                    await trusted_user_id(),
+                    order_id=order_id,
+                    tracking_no=tracking_no,
+                )
+            )
         except OrderNotFound:
             return _encode({"code": "order_not_found", "error": "没有找到您的这笔订单"})
 
@@ -137,8 +150,11 @@ def build_business_tools(runtime: ToolRuntime) -> list[BaseTool]:
         """Create or retrieve a human-support ticket for the trusted conversation."""
 
         normalized_description = description.strip()
-        ticket_no = (_ticket_no(runtime.conversation_id, runtime.ticket_key, "proposal") if runtime.ticket_key
-                     else _ticket_no(runtime.conversation_id, description, ticket_type))
+        ticket_no = (
+            _ticket_no(runtime.conversation_id, runtime.ticket_key, "proposal")
+            if runtime.ticket_key
+            else _ticket_no(runtime.conversation_id, description, ticket_type)
+        )
         async with runtime.session_factory() as session:
             async with session.begin():
                 ticket, _ = await TicketRepository(session).create_or_get(
@@ -150,10 +166,12 @@ def build_business_tools(runtime: ToolRuntime) -> list[BaseTool]:
                 )
         # tickets.created_at is a UTC DATETIME; make its timezone explicit at the API boundary.
         created_at_utc = ticket.created_at.replace(tzinfo=timezone.utc)
-        return _encode({
-            "ticket_no": ticket.ticket_no,
-            "status": ticket.status,
-            "created_at": created_at_utc.isoformat().replace("+00:00", "Z"),
-        })
+        return _encode(
+            {
+                "ticket_no": ticket.ticket_no,
+                "status": ticket.status,
+                "created_at": created_at_utc.isoformat().replace("+00:00", "Z"),
+            }
+        )
 
     return [query_order, query_product, query_logistics, query_faq, create_ticket]

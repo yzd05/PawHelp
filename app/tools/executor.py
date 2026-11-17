@@ -134,10 +134,14 @@ class ToolExecutor:
         return result
 
     async def _audit(self, result, spec, args, error, duration):
-        if self.runtime is None: return
+        if self.runtime is None or self.runtime.session_factory is None:
+            return
         try:
+            session_cm = self.runtime.session_factory()
+            if session_cm is None:
+                return
             from app.database.models import ToolAuditLog
-            async with self.runtime.session_factory() as session, session.begin():
+            async with session_cm as session, session.begin():
                 session.add(ToolAuditLog(conversation_id=self.runtime.conversation_id or None,
                     tool_call_id=result.tool_call_id, tool_name=result.name,
                     tool_source=spec.source if spec else "builtin", mcp_server=spec.server if spec else None,

@@ -28,12 +28,14 @@ def tool_call(name: str, args: str, call_id: str) -> AIMessageChunk:
 
 
 def pipeline_default(schema_name: str, messages):
-    """Neutral answers for knowledge-pipeline schemas; None for everything else."""
+    """Neutral answers for knowledge-pipeline and background schemas; None for everything else."""
 
     if schema_name == "KnowledgeSubquestions":
         return {"queries": [str(messages[-1].content)]}
     if schema_name == "EvidenceDecision":
         return {"useful": True, "reason": "证据可回答问题"}
+    if schema_name == "TitleResult":
+        return {"title": "测试会话标题"}
     return None
 
 
@@ -199,14 +201,6 @@ class InMemoryWorkflow(WorkflowChatService):
     async def _persist_workflow_answer(self, conversation_id, answer, actions, sources, *, related_order_id=None, tool_trace=None, reply_to_message_id=None, retrieved_chunks=None):
         self.saved.append((answer, actions))
         return 20 + len(self.saved)
-
-    async def _persist_assistant(self, conversation_id, content, *, tool_calls=None):
-        self.saved.append(("tool_call", tool_calls))
-        return 1
-
-    async def _persist_tool(self, conversation_id, *, content, tool_call_id):
-        self.saved.append(("tool_result", tool_call_id))
-        return 2
 
     async def _record_low_confidence(self, turn, *, source, reason, retrieved_chunks=None):
         self.low_confidence.append(source)

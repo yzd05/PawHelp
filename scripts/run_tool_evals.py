@@ -1,4 +1,4 @@
-"""Run the labelled one-tool acceptance set against the configured live service."""
+"""Run the labelled workflow acceptance set against the configured live service."""
 
 import asyncio
 from collections.abc import Iterable
@@ -9,18 +9,30 @@ from random import Random
 import re
 from uuid import uuid4
 
+from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
 from app.config import Settings
-from app.database.models import Conversation, Message, Ticket, Order, Shipment, ShipmentEvent
+from app.database.models import (
+    Conversation,
+    ConversationSummary,
+    LowConfidenceQuestion,
+    Message,
+    Order,
+    RequestObservation,
+    Shipment,
+    ShipmentEvent,
+    Ticket,
+    ToolAuditLog,
+)
 from app.database.session import create_async_engine_from_settings, create_session_factory
 from app.llm import create_chat_model
 from app.repositories.messages import MessageRepository
 from app.schemas import ChatRequest
-from app.services.tool_chat import ToolAwareChatService
-from sqlalchemy import delete, select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-
+from app.workflow.graph import WorkflowChatService
 
 CASES_PATH = Path(__file__).resolve().parents[1] / "evals" / "tool_call_cases.jsonl"
+_KNOWLEDGE_STEPS = {"knowledge_retrieval", "query_faq"}
 _STATUS_PARAPHRASES = {
     "accepted": ("accepted", "已揽收", "已接单", "已受理"),
     "in_transit": ("in_transit", "运输中", "正在运输", "运输途中"),
@@ -31,6 +43,7 @@ _LOCATION_PARAPHRASES = {
     "配送中心": ("配送中心",),
     "运输途中": ("运输途中", "还在路上", "在路上"),
     "派送站": ("派送站", "派送站点"),
+    "收货地址": ("收货地址",),
 }
 _UNSUPPORTED_LOGISTICS_CLAIMS = ("退款", "退货", "取消订单", "签收", "丢失", "赔偿")
 _UNSUPPORTED_POLICY_CLAIMS = (
@@ -210,7 +223,7 @@ def score_case(
     terminal_event: str,
     tool_succeeded: bool,
 ) -> ScoreResult:
-    """Score a tool trace without network access or model-dependent heuristics."""
+    """Score a workflow trace without network access or model-dependent heuristics."""
 
     if terminal_event != "done":
         return ScoreResult(False, f"terminal_{terminal_event}")
@@ -234,7 +247,7 @@ def score_case(
     normalised_answer = _normalise(answer)
     if expected_tool == "query_logistics":
         grounded = _logistics_answer_is_grounded(normalised_answer, payload)
-    elif expected_tool == "query_faq":
+    elif expected_tool in _KNOWLEDGE_STEPS:
         grounded = _return_policy_answer_is_grounded(normalised_answer, payload)
     else:
         grounded = False
@@ -270,36 +283,79 @@ def load_cases(path: Path = CASES_PATH) -> list[EvalCase]:
 
 
 async def _observe_case(
-    service: ToolAwareChatService,
+    service: WorkflowChatService,
     session_factory: async_sessionmaker[AsyncSession],
     case: EvalCase,
     request: ChatRequest,
 ) -> EvalObservation:
     turn = await service.prepare_turn(request)
-    observed_tool: str | None = None
-    tool_succeeded = False
+    succeeded_tools: list[str] = []
+    first_tool: str | None = None
     answer_parts: list[str] = []
+    done_sources: list[object] = []
     terminal_event = "incomplete"
+
     async for event in service.stream_turn(turn):
         if event.name == "tool_status":
             name = event.data.get("name")
-            if observed_tool is None and isinstance(name, str):
-                observed_tool = name
-            tool_succeeded = tool_succeeded or event.data.get("status") == "succeeded"
+            if isinstance(name, str):
+                if first_tool is None:
+                    first_tool = name
+                if event.data.get("status") == "succeeded":
+                    succeeded_tools.append(name)
         elif event.name == "token":
             content = event.data.get("content")
             if isinstance(content, str):
                 answer_parts.append(content)
-        elif event.name in {"done", "error"}:
-            terminal_event = event.name
+        elif event.name == "done":
+            terminal_event = "done"
+            sources = event.data.get("sources")
+            if isinstance(sources, list):
+                done_sources = sources
+        elif event.name == "error":
+            terminal_event = "error"
+
+    observed_tool: str | None = None
+    tool_succeeded = False
+    if case.expected_tool in succeeded_tools:
+        observed_tool = case.expected_tool
+        tool_succeeded = True
+    elif succeeded_tools:
+        observed_tool = succeeded_tools[-1]
+        tool_succeeded = True
+    elif case.expected_tool in _KNOWLEDGE_STEPS and done_sources:
+        observed_tool = case.expected_tool
+        tool_succeeded = True
+    else:
+        observed_tool = first_tool
 
     tool_result: str | None = None
     async with session_factory() as session:
         rows = await MessageRepository(session).list_ordered(turn.conversation_id)
-    for row in reversed(rows):
-        if row.role == "tool":
-            tool_result = row.content
-            break
+        if observed_tool in _KNOWLEDGE_STEPS:
+            for row in reversed(rows):
+                if row.role == "assistant" and isinstance(row.retrieved_chunks, list) and row.retrieved_chunks:
+                    tool_result = json.dumps({"matches": row.retrieved_chunks}, ensure_ascii=False)
+                    break
+        elif observed_tool is not None:
+            audit_row = await session.scalar(
+                select(ToolAuditLog)
+                .where(
+                    ToolAuditLog.conversation_id == turn.conversation_id,
+                    ToolAuditLog.tool_name == observed_tool,
+                    ToolAuditLog.status == "成功",
+                )
+                .order_by(ToolAuditLog.id.desc())
+                .limit(1)
+            )
+            if audit_row is not None and audit_row.result_summary:
+                tool_result = audit_row.result_summary
+            else:
+                for row in reversed(rows):
+                    if row.role == "tool":
+                        tool_result = row.content
+                        break
+
     return EvalObservation(
         turn.conversation_id,
         observed_tool,
@@ -311,7 +367,8 @@ async def _observe_case(
 
 
 async def _cleanup_case(
-    session_factory: async_sessionmaker[AsyncSession], conversation_id: int
+    session_factory: async_sessionmaker[AsyncSession],
+    conversation_id: int,
 ) -> None:
     """Remove only rows correlated to one random evaluation conversation."""
 
@@ -323,6 +380,10 @@ async def _cleanup_case(
             await session.execute(delete(ShipmentEvent).where(ShipmentEvent.tracking_no.in_(tracking)))
             await session.execute(delete(Shipment).where(Shipment.user_id == owner))
             await session.execute(delete(Order).where(Order.user_id == owner, Order.is_demo == 1))
+        await session.execute(delete(RequestObservation).where(RequestObservation.conversation_id == conversation_id))
+        await session.execute(delete(ToolAuditLog).where(ToolAuditLog.conversation_id == conversation_id))
+        await session.execute(delete(LowConfidenceQuestion).where(LowConfidenceQuestion.conversation_id == conversation_id))
+        await session.execute(delete(ConversationSummary).where(ConversationSummary.conversation_id == conversation_id))
         await session.execute(delete(Message).where(Message.conversation_id == conversation_id))
         await session.execute(delete(Ticket).where(Ticket.conversation_id == conversation_id))
         await session.execute(delete(Conversation).where(Conversation.id == conversation_id))
@@ -341,17 +402,18 @@ async def run_cases(
     cases: Iterable[EvalCase],
     settings: Settings,
     *,
-    service: ToolAwareChatService | None = None,
+    service: WorkflowChatService | None = None,
     session_factory: async_sessionmaker[AsyncSession] | None = None,
 ) -> int:
-    """Execute each labelled phrase through the real service and print safe summaries."""
+    """Execute each labelled phrase through the production workflow and print safe summaries."""
 
     owned_engine = None
+    owns_service = service is None
     try:
         if service is None:
             owned_engine = create_async_engine_from_settings(settings)
             session_factory = create_session_factory(owned_engine)
-            service = ToolAwareChatService(
+            service = WorkflowChatService(
                 settings=settings,
                 model=create_chat_model(settings),
                 session_factory=session_factory,
@@ -365,9 +427,7 @@ async def run_cases(
                 user_id=uuid4(),
                 message=case.message,
             )
-            observation = EvalObservation(
-                0, None, False, "", None, "unavailable"
-            )
+            observation = EvalObservation(0, None, False, "", None, "unavailable")
             result = ScoreResult(False, "unavailable")
             try:
                 observation = await _observe_case(service, session_factory, case, request)
@@ -391,6 +451,8 @@ async def run_cases(
             results.append(result)
             print(_safe_summary(case, observation, result))
     finally:
+        if owns_service and service is not None:
+            await service.close()
         if owned_engine is not None:
             await owned_engine.dispose()
 

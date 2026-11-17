@@ -3,24 +3,22 @@
 import asyncio
 import json
 import os
-import sys
 from pathlib import Path
+import sys
 from typing import Any, NamedTuple
 
 from langchain_core.messages import AIMessage, HumanMessage
-
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
-from app.chat import stream_chat_events  # noqa: E402
+from app.chat import StreamingChatModel, text_from_chunk  # noqa: E402
 from app.config import Settings, get_settings  # noqa: E402
 from app.context import prepare_context  # noqa: E402
 from app.extraction import AfterSalesExtractor  # noqa: E402
-from app.llm import create_chat_model  # noqa: E402
-
+from app.llm import create_chat_model, create_fast_chat_model  # noqa: E402
 
 EVALS_DIR = ROOT / "evals"
 PUBLIC_EXTRACTION_FIELDS = ("order_id", "request_type", "expected_solution")
@@ -111,7 +109,7 @@ async def evaluate_extractions(extractor: AfterSalesExtractor) -> tuple[int, int
     return passed, total
 
 
-async def evaluate_chats(model: object, settings: Settings) -> tuple[int, int]:
+async def evaluate_chats(model: StreamingChatModel, settings: Settings) -> tuple[int, int]:
     """Score token-only chat output against required and forbidden terms."""
 
     passed = 0
@@ -132,14 +130,20 @@ async def evaluate_chats(model: object, settings: Settings) -> tuple[int, int]:
             )
             response_parts: list[str] = []
             upstream_error = False
-            async for event, data in stream_chat_events(model, prepared):
-                if event == "token" and isinstance(data.get("content"), str):
-                    response_parts.append(data["content"])
-                elif event == "error":
-                    upstream_error = True
+            try:
+                async for chunk in model.astream(list(prepared.messages)):
+                    content = text_from_chunk(chunk)
+                    if content:
+                        response_parts.append(content)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                upstream_error = True
 
             score = score_chat_response(
-                "".join(response_parts), case, upstream_error=upstream_error
+                "".join(response_parts),
+                case,
+                upstream_error=upstream_error,
             )
             case_passed = score.passed
             emit(
@@ -175,7 +179,8 @@ async def main() -> int:
         return 2
 
     model = create_chat_model(settings)
-    extractor = AfterSalesExtractor(model, method=settings.structured_output_method)
+    fast_model = create_fast_chat_model(settings)
+    extractor = AfterSalesExtractor(fast_model, method=settings.structured_output_method)
     extraction_passed, extraction_total = await evaluate_extractions(extractor)
     chat_passed, chat_total = await evaluate_chats(model, settings)
     passed = extraction_passed + chat_passed

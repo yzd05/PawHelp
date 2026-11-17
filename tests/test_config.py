@@ -31,3 +31,25 @@ def test_chat_base_url_prefers_canonical_name_and_keeps_openai_alias(monkeypatch
                         DATABASE_URL="mysql+asyncmy://unused")
 
     assert str(settings.chat_base_url).rstrip("/") == expected
+
+
+def test_deprecated_fields_removed_and_new_optional_fields_validated() -> None:
+    assert "milvus_collection" not in Settings.model_fields
+    assert "knowledge_similarity_threshold" not in Settings.model_fields
+
+    default_cfg = fake_settings()
+    assert default_cfg.fast_openai_model is None
+    assert default_cfg.topic_service_url == "http://127.0.0.1:8110"
+    assert default_cfg.mock_delay_seconds == 0.0
+
+    blank_fast = fake_settings(fast_openai_model="   ")
+    assert blank_fast.fast_openai_model is None
+
+    custom_cfg = fake_settings(
+        fast_openai_model=" gpt-4o-mini ",
+        topic_service_url="http://topic-svc:8110",
+        mock_delay_seconds=0.25,
+    )
+    assert custom_cfg.fast_openai_model == "gpt-4o-mini"
+    assert custom_cfg.topic_service_url == "http://topic-svc:8110"
+    assert custom_cfg.mock_delay_seconds == 0.25

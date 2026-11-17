@@ -85,7 +85,7 @@ async def test_24_turns_full_checkpoint_and_sidebar_history(context_sessions, ca
                                   session_factory=sessions, order_data=FakeOrderData())
     user = str(uuid4())
     cid = None
-    caplog.set_level("INFO", logger="app.workflow.memory")
+    caplog.set_level("DEBUG", logger="app.workflow.memory")
     for index in range(24):
         request = ChatRequest(user_id=user, conversation_id=cid, message=f"第{index}轮问候" + "你好" * 50)
         turn = await service.prepare_turn(request)
@@ -286,10 +286,14 @@ async def test_same_session_serialization_and_summary_reference(context_sessions
     service = WorkflowChatService(catalog=TestToolCatalog(), settings=settings(model_context_window=1_000_000), model=model, session_factory=context_sessions, order_data=FakeOrderData())
     user = str(uuid4())
     first = await service.prepare_turn(ChatRequest(user_id=user, message="订单1001的物流"))
+    stream = service.stream_turn(first)
+    first_event = await anext(stream)
+    assert first_event.name == "conversation"
     competing = asyncio.create_task(service.prepare_turn(ChatRequest(user_id=user, conversation_id=first.conversation_id, message="最开始那个订单")))
     await asyncio.sleep(0)
-    assert not competing.done()  # No user row can interleave before the prior assistant row.
-    assert [event async for event in service.stream_turn(first)][-1].name == "done"
+    assert not competing.done()  # Active stream holds conversation lock; no user row interleaves.
+    remaining = [event async for event in stream]
+    assert remaining[-1].name == "done"
     second = await asyncio.wait_for(competing, 2)
     async with context_sessions() as session, session.begin():
         conversation = await session.get(Conversation, first.conversation_id)
@@ -326,7 +330,7 @@ async def test_partial_tool_failure_keeps_checkpoint_and_safe_trace(context_sess
                 raise RuntimeError("synthetic later model error")
     model = PartialModel()
     service = WorkflowChatService(catalog=TestToolCatalog(), settings=settings(model_context_window=32768), model=model, session_factory=context_sessions, order_data=FakeOrderData())
-    caplog.set_level("INFO", logger="app.workflow.memory")
+    caplog.set_level("DEBUG", logger="app.workflow.memory")
     user = str(uuid4())
     turn = await service.prepare_turn(ChatRequest(user_id=user, message="查询订单1001"))
     events = [event async for event in service.stream_turn(turn)]
@@ -381,7 +385,7 @@ async def test_24_agent_turns_mysql_and_sqlite_checkpoint_restart(mysql_session,
     user = str(uuid4())
     cid = None
     checkpoint_path = str(tmp_path / "acceptance.sqlite3")
-    caplog.set_level("INFO", logger="app.workflow.memory")
+    caplog.set_level("DEBUG", logger="app.workflow.memory")
     try:
         async with AsyncSqliteSaver.from_conn_string(checkpoint_path) as saver:
             service = WorkflowChatService(catalog=TestToolCatalog(), settings=cfg, model=model, session_factory=sessions, checkpointer=saver, order_data=FakeOrderData())

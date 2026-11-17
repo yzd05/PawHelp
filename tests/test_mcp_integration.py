@@ -103,6 +103,7 @@ async def test_two_mcp_processes_owned_data_dynamic_discovery_and_permission(tmp
         stop(processes[0])
         processes[0] = start("mcp_servers.logistics_server", env, extended=True)
         await ready(cfg.mcp_logistics_url, processes[0])
+        catalog.invalidate()
         discovered = await catalog.snapshot(runtime)  # SAME Client catalog; only Server restarted.
         assert "query_delivery_options" in discovered.names and discovered.spec("query_delivery_options").permission == "deny"
         denied = await ToolExecutor(discovered).execute({"id": "denied", "name": "query_delivery_options", "args": {"tracking_no": "DEMO1001"}})
@@ -112,6 +113,7 @@ async def test_two_mcp_processes_owned_data_dynamic_discovery_and_permission(tmp
         result = await ToolExecutor(approved).execute({"id": "hot", "name": "query_delivery_options", "args": {"tracking_no": "DEMO1001"}})
         assert result.ok and "自提" in result.content
         stop(processes[0])
+        catalog.invalidate()
         isolated = await catalog.snapshot(runtime)
         assert "query_warranty" in isolated.names and "query_logistics" not in isolated.names
     finally:

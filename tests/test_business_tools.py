@@ -107,18 +107,23 @@ async def test_query_faq_keeps_contract_while_postage_paraphrase_is_recalled(
 
 
 async def test_demo_product_is_deterministic_when_its_rng_is_injected(mysql_session) -> None:
-    """Replacing injected randomness with global state must break repeatable demo replies."""
+    """Product demo lookup derives a stable result per normalized product name and marks is_demo."""
 
     session_factory = async_sessionmaker(mysql_session.bind, expire_on_commit=False)
     first = ToolRuntime(1, session_factory, Random(11))
-    second = ToolRuntime(2, session_factory, Random(11))
+    second = ToolRuntime(2, session_factory, Random(99))
 
     first_tools = {tool.name: tool for tool in build_business_tools(first)}
     second_tools = {tool.name: tool for tool in build_business_tools(second)}
 
-    assert await first_tools["query_product"].ainvoke({"product": "保温杯"}) == await second_tools[
-        "query_product"
-    ].ainvoke({"product": "保温杯"})
+    first_payload = json.loads(await first_tools["query_product"].ainvoke({"product": "保温杯"}))
+    second_payload = json.loads(await second_tools["query_product"].ainvoke({"product": "  保温杯  "}))
+    repeat_payload = json.loads(await first_tools["query_product"].ainvoke({"product": "保温杯"}))
+
+    assert first_payload == second_payload == repeat_payload
+    assert first_payload["is_demo"] is True
+    assert first_payload["availability"] in {"in_stock", "limited", "preorder"}
+    assert 1 <= first_payload["stock"] <= 99
 
 
 async def test_ticket_uses_trusted_conversation_and_stable_retry_identity(

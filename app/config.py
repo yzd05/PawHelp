@@ -10,6 +10,7 @@ from pydantic import (
     PositiveInt,
     SecretStr,
     StringConstraints,
+    field_validator,
     model_validator,
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -24,6 +25,7 @@ class Settings(BaseSettings):
     openai_model: Annotated[
         str, StringConstraints(strip_whitespace=True, min_length=1)
     ]
+    fast_openai_model: str | None = None
     openai_api_key: SecretStr
     database_url: SecretStr
     shop_name: str = "本店"
@@ -51,6 +53,7 @@ class Settings(BaseSettings):
     mcp_aftersales_url: str = "http://127.0.0.1:8102/mcp"
     mcp_discovery_timeout_seconds: float = Field(default=3, gt=0, le=30)
     mcp_demo_secret: SecretStr = SecretStr("local-demo-only-change-me")
+    mock_delay_seconds: float = Field(default=0.0, ge=0.0, le=120.0)
     tool_policy_path: str = "config/tool-policy.json"
     tool_plugins_path: str = "tool_plugins"
     structured_output_method: Literal["function_calling", "json_mode", "json_schema"] = "json_mode"
@@ -59,9 +62,7 @@ class Settings(BaseSettings):
     embedding_max_length: PositiveInt = 1024
     vectorize_batch_size: PositiveInt = 16
     milvus_uri: str = "http://127.0.0.1:19530"
-    milvus_collection: str = "knowledge"
     milvus_hybrid_collection: str = "knowledge_hybrid"
-    knowledge_similarity_threshold: float = Field(default=0.45, ge=-1, le=1)
     knowledge_rerank_threshold: float = Field(default=0.1, ge=0, le=1)
     dense_recall_limit: PositiveInt = 50
     bm25_recall_limit: PositiveInt = 50
@@ -71,6 +72,7 @@ class Settings(BaseSettings):
     reranker_query_max_length: PositiveInt = 256
     reranker_passage_max_length: PositiveInt = 1024
     conversation_mining_batch_size: PositiveInt = 20
+    topic_service_url: str = "http://127.0.0.1:8110"
     observability_enabled: bool = True
     langfuse_enabled: bool = False
     langfuse_base_url: str = "http://127.0.0.1:3000"
@@ -92,6 +94,16 @@ class Settings(BaseSettings):
     observation_snapshot_limit: int = Field(default=5, ge=1, le=20)
     input_price_per_million: float | None = Field(default=None, ge=0)
     output_price_per_million: float | None = Field(default=None, ge=0)
+
+    @field_validator("fast_openai_model", mode="before")
+    @classmethod
+    def _normalize_fast_model(cls, value: object) -> str | None:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            stripped = value.strip()
+            return stripped or None
+        return str(value).strip() or None
 
     @model_validator(mode="after")
     def _jev_needs_key(self) -> "Settings":

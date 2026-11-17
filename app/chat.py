@@ -1,12 +1,9 @@
 """Logical, transport-independent chat streaming events."""
 
-import asyncio
 from collections.abc import AsyncIterator, Sequence
 from typing import NamedTuple, Protocol
 
 from langchain_core.messages import AIMessageChunk, BaseMessage
-
-from app.context import PreparedContext
 
 
 class StreamingChatModel(Protocol):
@@ -44,39 +41,3 @@ def text_from_chunk(chunk: AIMessageChunk) -> str:
         ):
             text_parts.append(block["text"])
     return "".join(text_parts)
-
-
-async def stream_chat_events(
-    model: StreamingChatModel, prepared: PreparedContext
-) -> AsyncIterator[ChatEvent]:
-    """Yield safe logical events from one model invocation."""
-
-    response_parts: list[str] = []
-    try:
-        async for chunk in model.astream(list(prepared.messages)):
-            content = text_from_chunk(chunk)
-            if not content:
-                continue
-            response_parts.append(content)
-            yield ChatEvent("token", {"content": content})
-            await asyncio.sleep(0)
-    except asyncio.CancelledError:
-        raise
-    except Exception:
-        yield ChatEvent(
-            "error",
-            {
-                "code": "upstream_error",
-                "message": "模型服务暂时不可用，请稍后重试",
-            },
-        )
-        return
-
-    yield ChatEvent(
-        "done",
-        {
-            "content": "".join(response_parts),
-            "input_tokens_estimate": prepared.input_tokens_estimate,
-            "trimmed_messages": prepared.trimmed_messages,
-        },
-    )
