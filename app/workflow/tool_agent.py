@@ -253,7 +253,7 @@ class ToolAgentNodes:
             logger.exception("agent partial failure conversation=%s; completed observations retained", self.turn.conversation_id)
             return {
                 **self._final(
-                    "非常抱歉，部分实时查询暂时未能完成。已查到的记录已为您保留，请您稍后重试或转接人工客服继续处理。",
+                    "非常抱歉，部分查询暂时未能完成。已查到的记录已为您保留，请您稍后重试或转接人工客服继续处理。",
                     ["转人工"],
                     [],
                     writer,
@@ -275,7 +275,7 @@ class ToolAgentNodes:
         if recalling and calls:
             return {
                 **self._final(
-                    "当前正在为您回顾本轮对话记录，暂不发起新的实时查询；现有记录中还无法确认该信息，您可以直接告诉我需要新查询的订单或问题。",
+                    "当前正在为您回顾本轮对话记录，暂不执行新的业务查询；现有记录中暂时无法确认该信息，您可以直接告诉我需要新查询的订单或问题。",
                     [],
                     [],
                     writer,
@@ -465,9 +465,9 @@ class ToolAgentNodes:
                 if result.ok:
                     ticket_answer = "工单已创建：" + json.loads(result.content)["ticket_no"] + "（待处理），客服专员会尽快为您跟进。"
                 elif not confirmation:
-                    ticket_answer = "好的，已为您取消提交工单。如后续还有其他问题，随时告诉我。"
+                    ticket_answer = "好的，已取消本次工单提交。如后续还有其他问题，随时告诉我。"
                 else:
-                    ticket_answer = "抱歉，工单提交状态暂时无法确认，为避免重复建单未自动重试。建议您先核对工单记录或联系人工客服确认。"
+                    ticket_answer = "抱歉，工单提交结果暂时无法确认，为避免重复建单未自动重试。建议您先核对工单记录或联系人工客服确认。"
         self.nodes.agent_context = context
         output: dict[str, Any] = {
             "trace": [*state.get("trace", []), *traces],
