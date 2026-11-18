@@ -11,13 +11,12 @@ import pytest
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from app.config import Settings
 from app.database.models import Order, Shipment, ShipmentEvent
 from app.main import create_app
 from app.repositories.orders import OrderNotFound, OrderRepository
 from app.services.orders import OrderData
 from app.tools.business import ToolRuntime, build_business_tools
-from tests.fakes import FakeCombinedModel
+from tests.fakes import FakeCombinedModel, fake_settings
 
 
 @pytest.fixture
@@ -50,7 +49,12 @@ async def test_tools_cards_and_restart_share_the_same_persisted_snapshot(owned_d
     assert by_tracking["status"] == cards[0]["status"] == "delivered"
     assert by_tracking["trace"][-1]["occurred_at"] == cards[0]["delivered_at"]
 
-    app = create_app(settings=Settings(), model=FakeCombinedModel(), session_factory=factory, tool_chat_service=object())
+    app = create_app(
+        settings=fake_settings(),
+        model=FakeCombinedModel(),
+        session_factory=factory,
+        tool_chat_service=object(),
+    )
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get("/v1/orders", headers={"X-Demo-User-Id": owner})
         assert response.status_code == 200
