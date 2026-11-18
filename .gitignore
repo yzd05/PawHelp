@@ -31,7 +31,12 @@ dist/
 /data/topic-classifier/
 /reports/runs/
 /reports/confidence-calibration/
+!reports/confidence-calibration/
+/reports/confidence-calibration/*
+!reports/confidence-calibration/relevance-train-served-20261020.json
+!reports/confidence-calibration/relevance-validation-served-20261020.json
 /reports/retrieval-evaluation.json
+!reports/retrieval-evaluation.baseline.json
 /reports/jev-evidence/*.json
 /reports/jev-intent/*.json
 *.safetensors

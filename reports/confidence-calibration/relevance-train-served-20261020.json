@@ -1,0 +1,4863 @@
+{
+  "reranker_model": "BAAI/bge-reranker-v2-m3",
+  "scoring_fingerprint": "f262ca1fd918e9f09e1c4b97dd35624c28d7b49ec20eb7866d94650680ec6bd2",
+  "dataset_sha256": "10e99984d289d4043695c174c61bf7d14849bc8e5439d7e56d2c569f2c1d4ce0",
+  "kept_entries_sha256": "086ad7bbb96eca52e3283a0e4bb9b4a3ed45b303e8f4ac0a06b1e8ea2c1cff66",
+  "kept_entries_count": 1,
+  "collection_mode": "served path: model query rewrite + question split + whole knowledge base, knowledge intent; policy-intent extra queries and content filter are not covered",
+  "label_scope": "relevance_prefilter",
+  "label_rule": "相关性粗筛：Top5 证据是否明确支持用户所问的至少一个必要事实。不可把相关词或另一种服务当直接支持。",
+  "sample_rule": "扩充语料后重新校准：A–E 每桶旧题 1–6、新题 61–66 及 F1–F12 共 72 题开发；A–E 每桶 17–18、73–74 及 F13–F16 共 24 题独立验证（旧题 17–18 从未参与以往校准）。按编号固定抽样，未看评分。",
+  "reviewer": "Claude 逐条原文审阅（要点字面命中作初稿），用户授权代做标注；不是人工业务核准",
+  "scope_limit": "96 题小样本的线上路径 Top5 快照（知识意图：改写 + 拆分 + 全库）；政策意图的附加查询与内容类型过滤未覆盖，改写模型非确定，本快照只是一次采样。评测题与知识文档均为自建生成，不代表生产错误率保证。",
+  "relabel_note": "2026-10-20 改按线上路径（模型改写 + 复合问题拆分 + 全库检索，知识意图）重新采集原 96 题：54 题 Top5 集合变化，变化几乎都在低分尾部。逐题按原口径复核：78 道可答题的新 Top5 仍含原支持块与全部原命中要点（要点字面命中作初稿，再看原文确认）；18 道库外题新进入的块（如 #1004 支付方式、#985 规格手册引言、#927 云存储体验）均不直接回答所问，仍判不支持。96 题标签均不变，分数与证据取本次采集值。",
+  "rows": [
+    {
+      "case_id": "A1",
+      "question": "7 天无理由退货需要满足什么条件",
+      "queries": [
+        "7 天无理由退货需要满足什么条件"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 972,
+          "category": "退货退款政策 / 无理由退货",
+          "section_path": "退货退款政策 / 无理由退货 / 适用范围",
+          "question": "适用范围",
+          "answer": "自签收之日起 7 天内,商品完好、不影响二次销售的,支持无理由退货。定制类、生鲜类商品除外。",
+          "score": 0.8944211564084097
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 998,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 退货政策是什么",
+          "question": "退货政策是什么",
+          "answer": "支持 7 天无理由退货,商品需保持完好、不影响二次销售,具体以平台售后规则为准。",
+          "score": 0.8752548437248808
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 974,
+          "category": "退货退款政策 / 换货政策",
+          "section_path": "退货退款政策 / 换货政策 / 换货条件",
+          "question": "换货条件",
+          "answer": "收到商品 7 天内,商品完好且配件齐全的,可申请一次同款换货;不同型号或颜色需先退货再重新下单。",
+          "score": 0.18140818051352106
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 979,
+          "category": "退货退款政策",
+          "section_path": "退货退款政策 / 不支持退货的商品",
+          "question": "不支持退货的商品",
+          "answer": "定制类、生鲜类、已拆封的猫砂等消耗品,以及标注「不支持无理由退货」的商品,非质量问题不支持退货。",
+          "score": 0.12635333964061332
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 1000,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 换货流程怎么走",
+          "question": "换货流程怎么走",
+          "answer": "收到商品 7 天内可申请换货,联系客服登记后将商品寄回,平台核验无误后补发新品。",
+          "score": 0.05899302973563795
+        }
+      ],
+      "expected_points": [
+        "7 天无理由退货",
+        "商品需保持完好、不影响二次销售"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "A2",
+      "question": "怎么提交退款申请",
+      "queries": [
+        "怎么提交退款申请"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 999,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 如何申请退款",
+          "question": "如何申请退款",
+          "answer": "在「我的订单」找到对应订单点击「申请退款」,按提示提交,审核通过后原路退回。",
+          "score": 0.9826243354907803
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 1010,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 价格保护怎么申请",
+          "question": "价格保护怎么申请",
+          "answer": "自营商品支持下单后 7 天内价保,期间若同款降价可在「我的订单」-「申请价保」提交,差价将退回原支付渠道。",
+          "score": 0.12984343802049797
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 1000,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 换货流程怎么走",
+          "question": "换货流程怎么走",
+          "answer": "收到商品 7 天内可申请换货,联系客服登记后将商品寄回,平台核验无误后补发新品。",
+          "score": 0.09252365778158944
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 978,
+          "category": "退货退款政策",
+          "section_path": "退货退款政策 / 运输破损处理",
+          "question": "运输破损处理",
+          "answer": "商品运输途中破损的,请在签收后 48 小时内联系客服并提供开箱视频与照片,核实后可免费补发或退款,相关运费由平台承担。",
+          "score": 0.06041841989614356
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 974,
+          "category": "退货退款政策 / 换货政策",
+          "section_path": "退货退款政策 / 换货政策 / 换货条件",
+          "question": "换货条件",
+          "answer": "收到商品 7 天内,商品完好且配件齐全的,可申请一次同款换货;不同型号或颜色需先退货再重新下单。",
+          "score": 0.0596469429451214
+        }
+      ],
+      "expected_points": [
+        "我的订单",
+        "申请退款",
+        "按提示提交",
+        "审核通过后原路退回"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "A3",
+      "question": "换货流程怎么走",
+      "queries": [
+        "换货流程怎么走"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 1000,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 换货流程怎么走",
+          "question": "换货流程怎么走",
+          "answer": "收到商品 7 天内可申请换货,联系客服登记后将商品寄回,平台核验无误后补发新品。",
+          "score": 0.993636426303936
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 974,
+          "category": "退货退款政策 / 换货政策",
+          "section_path": "退货退款政策 / 换货政策 / 换货条件",
+          "question": "换货条件",
+          "answer": "收到商品 7 天内,商品完好且配件齐全的,可申请一次同款换货;不同型号或颜色需先退货再重新下单。",
+          "score": 0.3305792414155799
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 1008,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 订单可以修改或取消吗",
+          "question": "订单可以修改或取消吗",
+          "answer": "订单未发货前可在「我的订单」自助取消;已发货订单无法修改收货信息,可拒收后走退款流程。修改商品数量需取消后重新下单。",
+          "score": 0.2474414732840463
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 975,
+          "category": "退货退款政策 / 换货政策",
+          "section_path": "退货退款政策 / 换货政策 / 换货运费",
+          "question": "换货运费",
+          "answer": "非质量问题的换货,往返运费由买家承担;因质量问题或发错货的换货,往返运费由平台承担。",
+          "score": 0.05310790401616766
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 921,
+          "category": "售后手册",
+          "section_path": "售后手册 / 维修寄修流程",
+          "question": "维修寄修流程",
+          "answer": "保修期内设备故障,联系客服登记后按指引将设备寄回指定维修点,核验后免费维修并寄回;超保或人为损坏维修可能收取工本费,费用会提前告知。",
+          "score": 0.042087727915618836
+        }
+      ],
+      "expected_points": [
+        "7 天内可申请换货",
+        "联系客服登记",
+        "将商品寄回",
+        "平台核验无误后补发新品"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "A4",
+      "question": "现货商品下单后多久发货",
+      "queries": [
+        "现货商品下单后多久发货"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 1001,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 发货时效多久",
+          "question": "发货时效多久",
+          "answer": "现货商品付款后 48 小时内发货,预售商品以商品详情页标注的发货时间为准。",
+          "score": 0.9956516186780524
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 1009,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 商品缺货多久补货",
+          "question": "商品缺货多久补货",
+          "answer": "现货售罄的商品通常 3 至 7 天内补货,可在商品页点击「到货通知」,补货后系统会推送提醒。",
+          "score": 0.870156561979502
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 980,
+          "category": "退货退款政策",
+          "section_path": "退货退款政策 / 预售与定金",
+          "question": "预售与定金",
+          "answer": "预售商品以详情页标注的时间发货;定金支付后不支持无理由退定金,尾款未按时支付的,定金按活动规则处理。",
+          "score": 0.16803621717823455
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 1000,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 换货流程怎么走",
+          "question": "换货流程怎么走",
+          "answer": "收到商品 7 天内可申请换货,联系客服登记后将商品寄回,平台核验无误后补发新品。",
+          "score": 0.06903792817478999
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 974,
+          "category": "退货退款政策 / 换货政策",
+          "section_path": "退货退款政策 / 换货政策 / 换货条件",
+          "question": "换货条件",
+          "answer": "收到商品 7 天内,商品完好且配件齐全的,可申请一次同款换货;不同型号或颜色需先退货再重新下单。",
+          "score": 0.05470151263137117
+        }
+      ],
+      "expected_points": [
+        "48 小时内"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "A5",
+      "question": "满多少钱包邮,不满怎么收运费",
+      "queries": [
+        "满多少钱包邮？",
+        "不满怎么收运费？",
+        "满多少钱包邮,不满怎么收运费"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 1002,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 运费怎么算",
+          "question": "运费怎么算",
+          "answer": "单笔订单满 99 元包邮,未满收取 10 元运费,偏远地区运费另计。邮费即运费,按此规则收取。",
+          "score": 0.9410069702643621
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 967,
+          "category": "积分与优惠券细则",
+          "section_path": "积分与优惠券细则 / 积分抵扣上限",
+          "question": "积分抵扣上限",
+          "answer": "结算时积分抵扣金额不超过该笔订单实付金额的 50%，剩余部分需通过其他支付方式支付。",
+          "score": 0.021822824973459234
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 1007,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 配送范围与偏远地区",
+          "question": "配送范围与偏远地区",
+          "answer": "全国大部分地区支持配送,新疆、西藏、内蒙古等偏远地区运费另计且时效顺延;港澳台及海外暂不支持自营配送。",
+          "score": 0.01791734476747132
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 976,
+          "category": "退货退款政策",
+          "section_path": "退货退款政策 / 退换货运费承担",
+          "question": "退换货运费承担",
+          "answer": "无理由退货的退回运费由买家承担;因商品质量问题、发错货、少发漏发导致的退换货,运费由平台承担。运费承担以平台售后规则最终判定为准。",
+          "score": 0.017644463410564557
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 975,
+          "category": "退货退款政策 / 换货政策",
+          "section_path": "退货退款政策 / 换货政策 / 换货运费",
+          "question": "换货运费",
+          "answer": "非质量问题的换货,往返运费由买家承担;因质量问题或发错货的换货,往返运费由平台承担。",
+          "score": 0.01518904880798395
+        }
+      ],
+      "expected_points": [
+        "满 99 元包邮",
+        "10 元运费"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "A6",
+      "question": "电子发票怎么申请,多久会发到邮箱",
+      "queries": [
+        "电子发票怎么申请？",
+        "电子发票多久会发到邮箱？",
+        "电子发票怎么申请,多久会发到邮箱"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 1003,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 发票如何开具",
+          "question": "发票如何开具",
+          "answer": "在「我的订单」-「申请开票」提交抬头与税号,电子发票将于 3 个工作日内发送至邮箱。",
+          "score": 0.9883577758353339
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 956,
+          "category": "发票补充规则",
+          "section_path": "发票补充规则 / 开票申请期限",
+          "question": "开票申请期限",
+          "answer": "订单确认收货后 30 天内可申请开具发票，超过期限的订单不再受理开票申请。",
+          "score": 0.4252471650912698
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 958,
+          "category": "发票补充规则",
+          "section_path": "发票补充规则 / 增值税专用发票",
+          "question": "增值税专用发票",
+          "answer": "企业用户可申请增值税专用发票，申请时除抬头与税号外，还需填写注册地址、注册电话、开户银行及银行账号，信息需与营业执照及开户信息一致。",
+          "score": 0.2068940488158881
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 1001,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 发货时效多久",
+          "question": "发货时效多久",
+          "answer": "现货商品付款后 48 小时内发货,预售商品以商品详情页标注的发货时间为准。",
+          "score": 0.010944577400979882
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 999,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 如何申请退款",
+          "question": "如何申请退款",
+          "answer": "在「我的订单」找到对应订单点击「申请退款」,按提示提交,审核通过后原路退回。",
+          "score": 0.007846239292520898
+        }
+      ],
+      "expected_points": [
+        "我的订单",
+        "申请开票",
+        "提交抬头与税号",
+        "3 个工作日内发送至邮箱"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点（开票期限条款改为 30 天后复核，#1 同时回答申请入口与发送时效）"
+    },
+    {
+      "case_id": "A61",
+      "question": "更换绑定手机号在哪里操作",
+      "queries": [
+        "更换绑定手机号在哪里操作"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 952,
+          "category": "账户与安全",
+          "section_path": "账户与安全 / 更换绑定手机号",
+          "question": "更换绑定手机号",
+          "answer": "在 App「我的」-「设置」-「账号与安全」中可更换绑定手机号，需先通过原手机号验证码校验。原手机号已停用、无法接收验证码的，可选择「原号码不可用」提交身份核验申请，人工审核需 1 至 3 个工作日，审核通过后短信通知新号码。",
+          "score": 0.933187674170474
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 953,
+          "category": "账户与安全",
+          "section_path": "账户与安全 / 登录密码找回",
+          "question": "登录密码找回",
+          "answer": "在登录页点击「忘记密码」，通过绑定手机号接收验证码即可重置登录密码。连续输错密码 5 次，账号将被锁定 30 分钟，锁定期间可改用验证码登录。",
+          "score": 0.05389915445121032
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 923,
+          "category": "App 设备管理",
+          "section_path": "App 设备管理 / 家庭成员共享设备",
+          "question": "家庭成员共享设备",
+          "answer": "在 App 设备页点击「共享」，输入家人的注册手机号即可发出邀请。每台设备最多共享给 5 位家庭成员，被共享者可以查看和操作设备，但不能删除设备或再次共享。",
+          "score": 0.014728613849722676
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 920,
+          "category": "售后手册",
+          "section_path": "售后手册 / 人工客服入口与时间",
+          "question": "人工客服入口与时间",
+          "answer": "App 内「我的」-「联系客服」可转接在线人工;人工客服服务时间为每日 9:00 至 22:00,高峰期请耐心等待或留言。",
+          "score": 0.012479699745327845
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 983,
+          "category": "配件与耗材",
+          "section_path": "配件与耗材 / 配件购买入口",
+          "question": "配件购买入口",
+          "answer": "原装滤芯、除臭包、剑麻替换柱等配件，可在 App「设备」页的「耗材商城」购买，也可在商城直接搜索配件型号下单。",
+          "score": 0.00433150202056399
+        }
+      ],
+      "expected_points": [
+        "「我的」-「设置」-「账号与安全」",
+        "原手机号验证码校验"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "A62",
+      "question": "原手机号收不到验证码怎么换绑",
+      "queries": [
+        "原手机号收不到验证码怎么换绑"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 952,
+          "category": "账户与安全",
+          "section_path": "账户与安全 / 更换绑定手机号",
+          "question": "更换绑定手机号",
+          "answer": "在 App「我的」-「设置」-「账号与安全」中可更换绑定手机号，需先通过原手机号验证码校验。原手机号已停用、无法接收验证码的，可选择「原号码不可用」提交身份核验申请，人工审核需 1 至 3 个工作日，审核通过后短信通知新号码。",
+          "score": 0.957675408618915
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 953,
+          "category": "账户与安全",
+          "section_path": "账户与安全 / 登录密码找回",
+          "question": "登录密码找回",
+          "answer": "在登录页点击「忘记密码」，通过绑定手机号接收验证码即可重置登录密码。连续输错密码 5 次，账号将被锁定 30 分钟，锁定期间可改用验证码登录。",
+          "score": 0.10230470789265304
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 926,
+          "category": "App 设备管理",
+          "section_path": "App 设备管理 / 设备送人前解绑",
+          "question": "设备送人前解绑",
+          "answer": "设备赠送他人前，需在 App 设备页选择「删除设备」完成解绑，否则对方无法添加该设备。解绑后设备上的本地喂食计划与录像会被清除。",
+          "score": 0.01098694263059318
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 923,
+          "category": "App 设备管理",
+          "section_path": "App 设备管理 / 家庭成员共享设备",
+          "question": "家庭成员共享设备",
+          "answer": "在 App 设备页点击「共享」，输入家人的注册手机号即可发出邀请。每台设备最多共享给 5 位家庭成员，被共享者可以查看和操作设备，但不能删除设备或再次共享。",
+          "score": 0.006097562192575309
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 932,
+          "category": "设备故障代码",
+          "section_path": "设备故障代码 / 猫砂盆故障代码",
+          "question": "猫砂盆故障代码",
+          "answer": "| 代码 | 含义 | 处理办法 |\n| --- | --- | --- |\n| E1 | 滚筒转动受阻 | 断电后清理滚筒内结块与异物，再重新上电 |\n| E2 | 废砂盒未放到位 | 取出废砂盒重新推入，听到卡扣声即可 |\n| E3 | 称重传感器异常 | 将猫砂盆放在平整地面，在 App 中执行称重校准 |\n| E4 | 电机过载保护 | 断电静置 10 分钟后重启，频繁出现请联系售后 |\n| E5 | Wi-Fi 连接失败 | 检查路由器信号并在 App 中重新配网 |",
+          "score": 0.004810983032601249
+        }
+      ],
+      "expected_points": [
+        "原号码不可用",
+        "身份核验申请",
+        "1 至 3 个工作日"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "A63",
+      "question": "忘记登录密码怎么办",
+      "queries": [
+        "忘记登录密码怎么办"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 953,
+          "category": "账户与安全",
+          "section_path": "账户与安全 / 登录密码找回",
+          "question": "登录密码找回",
+          "answer": "在登录页点击「忘记密码」，通过绑定手机号接收验证码即可重置登录密码。连续输错密码 5 次，账号将被锁定 30 分钟，锁定期间可改用验证码登录。",
+          "score": 0.8942365768704993
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 925,
+          "category": "App 设备管理",
+          "section_path": "App 设备管理 / 更换路由器后重新配网",
+          "question": "更换路由器后重新配网",
+          "answer": "更换路由器或修改 Wi-Fi 密码后，长按设备配网键 5 秒，待指示灯快速闪烁，再在 App 中重新添加设备并输入新的 Wi-Fi 信息。",
+          "score": 0.26133092567451033
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 918,
+          "category": "售后手册",
+          "section_path": "售后手册 / 设备安装与激活",
+          "question": "设备安装与激活",
+          "answer": "智能设备首次使用需下载「喵喵优选」App,按说明书扫码添加设备并连接 2.4G Wi-Fi 完成激活;猫爬架等非联网商品按随附图解自行组装。",
+          "score": 0.17483253041377647
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 952,
+          "category": "账户与安全",
+          "section_path": "账户与安全 / 更换绑定手机号",
+          "question": "更换绑定手机号",
+          "answer": "在 App「我的」-「设置」-「账号与安全」中可更换绑定手机号，需先通过原手机号验证码校验。原手机号已停用、无法接收验证码的，可选择「原号码不可用」提交身份核验申请，人工审核需 1 至 3 个工作日，审核通过后短信通知新号码。",
+          "score": 0.12863455989921777
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 919,
+          "category": "售后手册",
+          "section_path": "售后手册 / 常见故障自查",
+          "question": "常见故障自查",
+          "answer": "- 饮水机不出水:检查水位是否低于最低线、水泵是否卡阻,断电清洗水泵后重试。\n- 猫砂盆报错:清空废砂盒并检查滚筒是否卡砂,重启设备;仍报错联系售后。\n- 喂食器卡粮:检查粮食颗粒直径是否超 12mm、粮桶是否受潮结块,清理出粮口后重试。\n- 摄像头离线:确认 Wi-Fi 为 2.4G 频段、信号良好,重启设备或在 App 内重新配网。",
+          "score": 0.11162799104060678
+        }
+      ],
+      "expected_points": [
+        "点击「忘记密码」",
+        "绑定手机号接收验证码"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "A64",
+      "question": "密码输错多少次会被锁定",
+      "queries": [
+        "密码输错多少次会被锁定"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 953,
+          "category": "账户与安全",
+          "section_path": "账户与安全 / 登录密码找回",
+          "question": "登录密码找回",
+          "answer": "在登录页点击「忘记密码」，通过绑定手机号接收验证码即可重置登录密码。连续输错密码 5 次，账号将被锁定 30 分钟，锁定期间可改用验证码登录。",
+          "score": 0.9818404882897381
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 954,
+          "category": "账户与安全",
+          "section_path": "账户与安全 / 账号异常冻结",
+          "question": "账号异常冻结",
+          "answer": "系统检测到异地频繁登录、短时间批量下单等异常行为时，会临时冻结账号以保护资金安全。冻结期间无法下单与使用积分，请联系人工客服完成身份核验，核验通过后即可解冻。",
+          "score": 0.006097562192575309
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 966,
+          "category": "积分与优惠券细则",
+          "section_path": "积分与优惠券细则 / 签到获取积分",
+          "question": "签到获取积分",
+          "answer": "在 App 首页每日签到可得 2 积分；连续签到满 7 天，额外奖励 10 积分，中断后重新计算连续天数。",
+          "score": 0.003538086057088537
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 919,
+          "category": "售后手册",
+          "section_path": "售后手册 / 常见故障自查",
+          "question": "常见故障自查",
+          "answer": "- 饮水机不出水:检查水位是否低于最低线、水泵是否卡阻,断电清洗水泵后重试。\n- 猫砂盆报错:清空废砂盒并检查滚筒是否卡砂,重启设备;仍报错联系售后。\n- 喂食器卡粮:检查粮食颗粒直径是否超 12mm、粮桶是否受潮结块,清理出粮口后重试。\n- 摄像头离线:确认 Wi-Fi 为 2.4G 频段、信号良好,重启设备或在 App 内重新配网。",
+          "score": 0.0016678823271748684
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 932,
+          "category": "设备故障代码",
+          "section_path": "设备故障代码 / 猫砂盆故障代码",
+          "question": "猫砂盆故障代码",
+          "answer": "| 代码 | 含义 | 处理办法 |\n| --- | --- | --- |\n| E1 | 滚筒转动受阻 | 断电后清理滚筒内结块与异物，再重新上电 |\n| E2 | 废砂盒未放到位 | 取出废砂盒重新推入，听到卡扣声即可 |\n| E3 | 称重传感器异常 | 将猫砂盆放在平整地面，在 App 中执行称重校准 |\n| E4 | 电机过载保护 | 断电静置 10 分钟后重启，频繁出现请联系售后 |\n| E5 | Wi-Fi 连接失败 | 检查路由器信号并在 App 中重新配网 |",
+          "score": 0.0012497093922085648
+        }
+      ],
+      "expected_points": [
+        "连续输错密码 5 次",
+        "锁定 30 分钟"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "A65",
+      "question": "账号被冻结了怎么解冻",
+      "queries": [
+        "账号被冻结了怎么解冻"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 954,
+          "category": "账户与安全",
+          "section_path": "账户与安全 / 账号异常冻结",
+          "question": "账号异常冻结",
+          "answer": "系统检测到异地频繁登录、短时间批量下单等异常行为时，会临时冻结账号以保护资金安全。冻结期间无法下单与使用积分，请联系人工客服完成身份核验，核验通过后即可解冻。",
+          "score": 0.9677167410666155
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 953,
+          "category": "账户与安全",
+          "section_path": "账户与安全 / 登录密码找回",
+          "question": "登录密码找回",
+          "answer": "在登录页点击「忘记密码」，通过绑定手机号接收验证码即可重置登录密码。连续输错密码 5 次，账号将被锁定 30 分钟，锁定期间可改用验证码登录。",
+          "score": 0.015723990527735578
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 952,
+          "category": "账户与安全",
+          "section_path": "账户与安全 / 更换绑定手机号",
+          "question": "更换绑定手机号",
+          "answer": "在 App「我的」-「设置」-「账号与安全」中可更换绑定手机号，需先通过原手机号验证码校验。原手机号已停用、无法接收验证码的，可选择「原号码不可用」提交身份核验申请，人工审核需 1 至 3 个工作日，审核通过后短信通知新号码。",
+          "score": 0.009303949868393646
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 926,
+          "category": "App 设备管理",
+          "section_path": "App 设备管理 / 设备送人前解绑",
+          "question": "设备送人前解绑",
+          "answer": "设备赠送他人前，需在 App 设备页选择「删除设备」完成解绑，否则对方无法添加该设备。解绑后设备上的本地喂食计划与录像会被清除。",
+          "score": 0.0054905632024992304
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 925,
+          "category": "App 设备管理",
+          "section_path": "App 设备管理 / 更换路由器后重新配网",
+          "question": "更换路由器后重新配网",
+          "answer": "更换路由器或修改 Wi-Fi 密码后，长按设备配网键 5 秒，待指示灯快速闪烁，再在 App 中重新添加设备并输入新的 Wi-Fi 信息。",
+          "score": 0.005343255956149592
+        }
+      ],
+      "expected_points": [
+        "联系人工客服完成身份核验",
+        "核验通过后即可解冻"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "A66",
+      "question": "最多能保存几个收货地址",
+      "queries": [
+        "最多能保存几个收货地址"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 955,
+          "category": "账户与安全",
+          "section_path": "账户与安全 / 收货地址管理",
+          "question": "收货地址管理",
+          "answer": "每个账号最多保存 20 个收货地址，可将其中一个设为默认地址，下单时自动带出。地址簿中的修改只影响之后的新订单，不会改动已提交订单的收货信息。",
+          "score": 0.9963923831967464
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 923,
+          "category": "App 设备管理",
+          "section_path": "App 设备管理 / 家庭成员共享设备",
+          "question": "家庭成员共享设备",
+          "answer": "在 App 设备页点击「共享」，输入家人的注册手机号即可发出邀请。每台设备最多共享给 5 位家庭成员，被共享者可以查看和操作设备，但不能删除设备或再次共享。",
+          "score": 0.002992665245354638
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 972,
+          "category": "退货退款政策 / 无理由退货",
+          "section_path": "退货退款政策 / 无理由退货 / 适用范围",
+          "question": "适用范围",
+          "answer": "自签收之日起 7 天内,商品完好、不影响二次销售的,支持无理由退货。定制类、生鲜类商品除外。",
+          "score": 0.002003333286176412
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 964,
+          "category": "物流异常处理",
+          "section_path": "物流异常处理 / 一单多包裹",
+          "question": "一单多包裹",
+          "answer": "同一订单中的多件商品可能分为多个包裹陆续发出，订单详情页会分别显示每个包裹的运单号与物流轨迹，请以全部包裹签收为准确认收货。",
+          "score": 0.0019570169401946333
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 957,
+          "category": "发票补充规则",
+          "section_path": "发票补充规则 / 发票换开",
+          "question": "发票换开",
+          "answer": "发票已开具但抬头或税号填写有误的，可在订单详情页点击「申请换开」重新提交正确信息，每个订单仅限换开 1 次。",
+          "score": 0.001410358496618023
+        }
+      ],
+      "expected_points": [
+        "最多保存 20 个收货地址"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "B1",
+      "question": "MH-LP100 的废砂盒建议多久倒一次",
+      "queries": [
+        "MH-LP100 的废砂盒建议多久倒一次"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 986,
+          "category": "商品规格手册",
+          "section_path": "商品规格手册 / 智能猫砂盆 Pro(型号 MH-LP100)",
+          "question": "智能猫砂盆 Pro(型号 MH-LP100)",
+          "answer": "- 型号:MH-LP100\n- 适用猫咪体重:1.5kg 至 8kg\n- 猫砂容量:9L,废砂盒容量约 7 天(单猫)\n- 核心功能:自动感应清理、活性炭除臭、App 远程监控与健康记录\n- 供电:220V 市电,断电后配置自动保存\n- 清理提示:废砂盒满时 App 推送提醒,建议每 5 至 7 天倾倒一次",
+          "score": 0.9980429830598053
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 951,
+          "category": "MH-LP 系列智能猫砂盆使用与保养",
+          "section_path": "MH-LP 系列智能猫砂盆使用与保养 / 滚筒深度清洗",
+          "question": "滚筒深度清洗",
+          "answer": "建议每月对滚筒深度清洗一次：先断电并倒空猫砂，取下滚筒用清水和中性清洁剂冲洗，完全晾干后再装回。不可使用含氯消毒剂，以免腐蚀内壁和损坏传感器。",
+          "score": 0.9343951625409306
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 988,
+          "category": "商品规格手册",
+          "section_path": "商品规格手册 / 智能猫砂盆 Max(型号 MH-LP200)",
+          "question": "智能猫砂盆 Max(型号 MH-LP200)",
+          "answer": "- 型号:MH-LP200\n- 适用猫咪体重:2kg 至 12kg,适合大型猫与多猫家庭\n- 猫砂容量:12L,废砂盒容量约 10 天(单猫)\n- 核心功能:超大滚筒、双重称重防夹、活性炭除臭、App 多猫健康档案\n- 供电:220V 市电\n- 清理提示:多猫家庭建议每 3 至 5 天倾倒一次废砂盒",
+          "score": 0.896975571673783
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 950,
+          "category": "MH-LP 系列智能猫砂盆使用与保养",
+          "section_path": "MH-LP 系列智能猫砂盆使用与保养 / 除臭包更换",
+          "question": "除臭包更换",
+          "answer": "活性炭除臭包建议每 30 天更换一次；多猫家庭或气味明显时可缩短为 20 天。更换时打开顶盖取出旧包，按卡槽方向放入新包即可。",
+          "score": 0.6272665021907519
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 948,
+          "category": "MH-LP 系列智能猫砂盆使用与保养",
+          "section_path": "MH-LP 系列智能猫砂盆使用与保养 / 新猫适应期",
+          "question": "新猫适应期",
+          "answer": "猫咪初次接触自动猫砂盆时，建议先关闭自动清理 3 至 5 天，并在新砂中混入少量原来用过的猫砂，帮助猫咪熟悉气味；确认猫咪正常如厕后再开启自动模式。",
+          "score": 0.46769642602814093
+        }
+      ],
+      "expected_points": [
+        "建议每 5 至 7 天倾倒一次"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "B2",
+      "question": "智能猫砂盆 Pro MH-LP100 有没有 App 远程监控",
+      "queries": [
+        "智能猫砂盆 Pro MH-LP100 有没有 App 远程监控"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 986,
+          "category": "商品规格手册",
+          "section_path": "商品规格手册 / 智能猫砂盆 Pro(型号 MH-LP100)",
+          "question": "智能猫砂盆 Pro(型号 MH-LP100)",
+          "answer": "- 型号:MH-LP100\n- 适用猫咪体重:1.5kg 至 8kg\n- 猫砂容量:9L,废砂盒容量约 7 天(单猫)\n- 核心功能:自动感应清理、活性炭除臭、App 远程监控与健康记录\n- 供电:220V 市电,断电后配置自动保存\n- 清理提示:废砂盒满时 App 推送提醒,建议每 5 至 7 天倾倒一次",
+          "score": 0.9938310050773187
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 987,
+          "category": "商品规格手册",
+          "section_path": "商品规格手册 / 智能猫砂盆 Lite(型号 MH-LP50)",
+          "question": "智能猫砂盆 Lite(型号 MH-LP50)",
+          "answer": "- 型号:MH-LP50\n- 适用猫咪体重:1.5kg 至 6kg\n- 猫砂容量:6L\n- 核心功能:自动感应清理、物理除臭盖板;不含 App 联网功能\n- 与 Pro 差异:Lite 无 App 远程监控与健康记录,价格更低,适合单猫家庭",
+          "score": 0.8183016013879783
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 995,
+          "category": "商品规格手册",
+          "section_path": "商品规格手册 / 自动喂食器 基础版(型号 MH-FD10)",
+          "question": "自动喂食器 基础版(型号 MH-FD10)",
+          "answer": "- 型号:MH-FD10\n- 粮桶容量:4L\n- 核心功能:定时定量投喂,每日最多 6 餐,语音呼唤进食\n- 供电:市电供电 + 4 节 5 号电池断电应急\n- 说明:基础版不含摄像头与 App 远程投喂",
+          "score": 0.14878776154920084
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 988,
+          "category": "商品规格手册",
+          "section_path": "商品规格手册 / 智能猫砂盆 Max(型号 MH-LP200)",
+          "question": "智能猫砂盆 Max(型号 MH-LP200)",
+          "answer": "- 型号:MH-LP200\n- 适用猫咪体重:2kg 至 12kg,适合大型猫与多猫家庭\n- 猫砂容量:12L,废砂盒容量约 10 天(单猫)\n- 核心功能:超大滚筒、双重称重防夹、活性炭除臭、App 多猫健康档案\n- 供电:220V 市电\n- 清理提示:多猫家庭建议每 3 至 5 天倾倒一次废砂盒",
+          "score": 0.10123348070699793
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 949,
+          "category": "MH-LP 系列智能猫砂盆使用与保养",
+          "section_path": "MH-LP 系列智能猫砂盆使用与保养 / 幼猫使用建议",
+          "question": "幼猫使用建议",
+          "answer": "体重不足 1.5kg 的幼猫可能无法被重量感应识别，存在自动清理时猫在盆内的风险，建议切换为手动清理模式，待体重达标后再开启自动清理。",
+          "score": 0.07807816514495095
+        }
+      ],
+      "expected_points": [
+        "App 远程监控"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "B3",
+      "question": "MH-LP50 和 MH-LP100 的联网功能有什么区别",
+      "queries": [
+        "MH-LP50 的联网功能是什么？",
+        "MH-LP100 的联网功能是什么？",
+        "MH-LP50 和 MH-LP100 的联网功能有什么区别"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 987,
+          "category": "商品规格手册",
+          "section_path": "商品规格手册 / 智能猫砂盆 Lite(型号 MH-LP50)",
+          "question": "智能猫砂盆 Lite(型号 MH-LP50)",
+          "answer": "- 型号:MH-LP50\n- 适用猫咪体重:1.5kg 至 6kg\n- 猫砂容量:6L\n- 核心功能:自动感应清理、物理除臭盖板;不含 App 联网功能\n- 与 Pro 差异:Lite 无 App 远程监控与健康记录,价格更低,适合单猫家庭",
+          "score": 0.9528381329658233
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 986,
+          "category": "商品规格手册",
+          "section_path": "商品规格手册 / 智能猫砂盆 Pro(型号 MH-LP100)",
+          "question": "智能猫砂盆 Pro(型号 MH-LP100)",
+          "answer": "- 型号:MH-LP100\n- 适用猫咪体重:1.5kg 至 8kg\n- 猫砂容量:9L,废砂盒容量约 7 天(单猫)\n- 核心功能:自动感应清理、活性炭除臭、App 远程监控与健康记录\n- 供电:220V 市电,断电后配置自动保存\n- 清理提示:废砂盒满时 App 推送提醒,建议每 5 至 7 天倾倒一次",
+          "score": 0.7457688628758079
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 982,
+          "category": "配件与耗材",
+          "section_path": "配件与耗材 / 猫砂盆耗材型号",
+          "question": "猫砂盆耗材型号",
+          "answer": "MH-LP100 与 MH-LP50 使用 DC-1 除臭包，MH-LP200 使用 DC-2 大容量除臭包；BG-50 垃圾袋三款猫砂盆通用。",
+          "score": 0.5671576348808801
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 997,
+          "category": "商品规格手册",
+          "section_path": "商品规格手册 / 全景看护摄像头(型号 MH-CAM1)",
+          "question": "全景看护摄像头(型号 MH-CAM1)",
+          "answer": "- 型号:MH-CAM1\n- 画质:2K 分辨率,355° 水平旋转、90° 俯仰\n- 核心功能:移动侦测报警、夜视、双向语音、逗猫激光\n- 存储:支持最大 128G TF 卡或云存储\n- 供电:Type-C 供电,需连接 2.4G Wi-Fi",
+          "score": 0.04913078875410071
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 918,
+          "category": "售后手册",
+          "section_path": "售后手册 / 设备安装与激活",
+          "question": "设备安装与激活",
+          "answer": "智能设备首次使用需下载「喵喵优选」App,按说明书扫码添加设备并连接 2.4G Wi-Fi 完成激活;猫爬架等非联网商品按随附图解自行组装。",
+          "score": 0.012479699745327845
+        }
+      ],
+      "expected_points": [
+        "Lite 无 App 远程监控与健康记录",
+        "App 远程监控与健康记录"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "B4",
+      "question": "MH-LP200 适合多大的猫,几天倒一次废砂盒",
+      "queries": [
+        "MH-LP200适合多大的猫",
+        "MH-LP200几天倒一次废砂盒",
+        "MH-LP200 适合多大的猫,几天倒一次废砂盒"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 988,
+          "category": "商品规格手册",
+          "section_path": "商品规格手册 / 智能猫砂盆 Max(型号 MH-LP200)",
+          "question": "智能猫砂盆 Max(型号 MH-LP200)",
+          "answer": "- 型号:MH-LP200\n- 适用猫咪体重:2kg 至 12kg,适合大型猫与多猫家庭\n- 猫砂容量:12L,废砂盒容量约 10 天(单猫)\n- 核心功能:超大滚筒、双重称重防夹、活性炭除臭、App 多猫健康档案\n- 供电:220V 市电\n- 清理提示:多猫家庭建议每 3 至 5 天倾倒一次废砂盒",
+          "score": 0.9991373922419715
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 951,
+          "category": "MH-LP 系列智能猫砂盆使用与保养",
+          "section_path": "MH-LP 系列智能猫砂盆使用与保养 / 滚筒深度清洗",
+          "question": "滚筒深度清洗",
+          "answer": "建议每月对滚筒深度清洗一次：先断电并倒空猫砂，取下滚筒用清水和中性清洁剂冲洗，完全晾干后再装回。不可使用含氯消毒剂，以免腐蚀内壁和损坏传感器。",
+          "score": 0.9632996461242259
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 949,
+          "category": "MH-LP 系列智能猫砂盆使用与保养",
+          "section_path": "MH-LP 系列智能猫砂盆使用与保养 / 幼猫使用建议",
+          "question": "幼猫使用建议",
+          "answer": "体重不足 1.5kg 的幼猫可能无法被重量感应识别，存在自动清理时猫在盆内的风险，建议切换为手动清理模式，待体重达标后再开启自动清理。",
+          "score": 0.9422946838534367
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 986,
+          "category": "商品规格手册",
+          "section_path": "商品规格手册 / 智能猫砂盆 Pro(型号 MH-LP100)",
+          "question": "智能猫砂盆 Pro(型号 MH-LP100)",
+          "answer": "- 型号:MH-LP100\n- 适用猫咪体重:1.5kg 至 8kg\n- 猫砂容量:9L,废砂盒容量约 7 天(单猫)\n- 核心功能:自动感应清理、活性炭除臭、App 远程监控与健康记录\n- 供电:220V 市电,断电后配置自动保存\n- 清理提示:废砂盒满时 App 推送提醒,建议每 5 至 7 天倾倒一次",
+          "score": 0.9246876936763765
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 948,
+          "category": "MH-LP 系列智能猫砂盆使用与保养",
+          "section_path": "MH-LP 系列智能猫砂盆使用与保养 / 新猫适应期",
+          "question": "新猫适应期",
+          "answer": "猫咪初次接触自动猫砂盆时，建议先关闭自动清理 3 至 5 天，并在新砂中混入少量原来用过的猫砂，帮助猫咪熟悉气味；确认猫咪正常如厕后再开启自动模式。",
+          "score": 0.9118099551992372
+        }
+      ],
+      "expected_points": [
+        "2kg 至 12kg",
+        "每 3 至 5 天"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "B5",
+      "question": "自动饮水机 MH-W20 的滤芯多久换一次",
+      "queries": [
+        "自动饮水机 MH-W20 的滤芯多久换一次"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 989,
+          "category": "商品规格手册",
+          "section_path": "商品规格手册 / 自动饮水机(型号 MH-W20)",
+          "question": "自动饮水机(型号 MH-W20)",
+          "answer": "- 型号:MH-W20\n- 水箱容量:2L\n- 过滤:三重过滤棉,建议每 2 周更换一次滤芯\n- 核心功能:静音水泵、缺水断电保护、水位窗口\n- 清洗:水泵可拆卸,建议每周清洗一次",
+          "score": 0.9997783218943074
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 990,
+          "category": "商品规格手册",
+          "section_path": "商品规格手册 / 自动饮水机 Plus(型号 MH-W40)",
+          "question": "自动饮水机 Plus(型号 MH-W40)",
+          "answer": "- 型号:MH-W40\n- 水箱容量:4L\n- 过滤:五重过滤棉 + 椰壳活性炭,建议每 3 周更换一次滤芯\n- 核心功能:UV 紫外杀菌、静音变频水泵、缺水断电保护\n- 清洗:整机可拆分水洗,建议每周清洗一次",
+          "score": 0.7791538447659502
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 991,
+          "category": "商品规格手册",
+          "section_path": "商品规格手册 / 自动饮水机 Pro 不锈钢(型号 MH-W60)",
+          "question": "自动饮水机 Pro 不锈钢(型号 MH-W60)",
+          "answer": "- 型号:MH-W60\n- 水箱容量:6L,304 不锈钢表面盘\n- 过滤:双滤芯并联,建议每 4 周更换一次滤芯\n- 核心功能:双泵冗余、无线水位提醒推送 App、缺水断电保护\n- 清洗:不锈钢面盘可高温消毒,建议每周清洗一次",
+          "score": 0.7426084229006266
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 981,
+          "category": "配件与耗材",
+          "section_path": "配件与耗材 / 饮水机滤芯型号",
+          "question": "饮水机滤芯型号",
+          "answer": "MH-W20 使用 FT-20 滤芯，MH-W40 使用 FT-40 滤芯，MH-W60 使用 FT-60 滤芯。三种滤芯尺寸不同，不可混用。",
+          "score": 0.6529056388166428
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 941,
+          "category": "MH-W 系列饮水机保养指南",
+          "section_path": "MH-W 系列饮水机保养指南 / 新滤芯首次使用",
+          "question": "新滤芯首次使用",
+          "answer": "新滤芯拆封后，先用清水浸泡 5 分钟并轻轻挤压排出内部气泡，再装入饮水机，可避免初期出水带黑色炭粉。",
+          "score": 0.5573333866428644
+        }
+      ],
+      "expected_points": [
+        "每 2 周"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "B6",
+      "question": "MH-W40 的滤芯多久换一次,有没有杀菌功能",
+      "queries": [
+        "MH-W40 的滤芯多久换一次？",
+        "MH-W40 有没有杀菌功能？",
+        "MH-W40 的滤芯多久换一次,有没有杀菌功能"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 990,
+          "category": "商品规格手册",
+          "section_path": "商品规格手册 / 自动饮水机 Plus(型号 MH-W40)",
+          "question": "自动饮水机 Plus(型号 MH-W40)",
+          "answer": "- 型号:MH-W40\n- 水箱容量:4L\n- 过滤:五重过滤棉 + 椰壳活性炭,建议每 3 周更换一次滤芯\n- 核心功能:UV 紫外杀菌、静音变频水泵、缺水断电保护\n- 清洗:整机可拆分水洗,建议每周清洗一次",
+          "score": 0.9986593795769002
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 989,
+          "category": "商品规格手册",
+          "section_path": "商品规格手册 / 自动饮水机(型号 MH-W20)",
+          "question": "自动饮水机(型号 MH-W20)",
+          "answer": "- 型号:MH-W20\n- 水箱容量:2L\n- 过滤:三重过滤棉,建议每 2 周更换一次滤芯\n- 核心功能:静音水泵、缺水断电保护、水位窗口\n- 清洗:水泵可拆卸,建议每周清洗一次",
+          "score": 0.4477319330862356
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 991,
+          "category": "商品规格手册",
+          "section_path": "商品规格手册 / 自动饮水机 Pro 不锈钢(型号 MH-W60)",
+          "question": "自动饮水机 Pro 不锈钢(型号 MH-W60)",
+          "answer": "- 型号:MH-W60\n- 水箱容量:6L,304 不锈钢表面盘\n- 过滤:双滤芯并联,建议每 4 周更换一次滤芯\n- 核心功能:双泵冗余、无线水位提醒推送 App、缺水断电保护\n- 清洗:不锈钢面盘可高温消毒,建议每周清洗一次",
+          "score": 0.34786934507495954
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 981,
+          "category": "配件与耗材",
+          "section_path": "配件与耗材 / 饮水机滤芯型号",
+          "question": "饮水机滤芯型号",
+          "answer": "MH-W20 使用 FT-20 滤芯，MH-W40 使用 FT-40 滤芯，MH-W60 使用 FT-60 滤芯。三种滤芯尺寸不同，不可混用。",
+          "score": 0.23493281703966828
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 950,
+          "category": "MH-LP 系列智能猫砂盆使用与保养",
+          "section_path": "MH-LP 系列智能猫砂盆使用与保养 / 除臭包更换",
+          "question": "除臭包更换",
+          "answer": "活性炭除臭包建议每 30 天更换一次；多猫家庭或气味明显时可缩短为 20 天。更换时打开顶盖取出旧包，按卡槽方向放入新包即可。",
+          "score": 0.2183358626245593
+        }
+      ],
+      "expected_points": [
+        "每 3 周",
+        "UV"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "B61",
+      "question": "MH-FD30 每天最多能设置几餐",
+      "queries": [
+        "MH-FD30 每天最多能设置几餐"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 935,
+          "category": "MH-FD 系列自动喂食器使用指南",
+          "section_path": "MH-FD 系列自动喂食器使用指南 / 喂食计划设置",
+          "question": "喂食计划设置",
+          "answer": "MH-FD10 通过机身按键和显示屏设置投喂时间与份数；MH-FD30 在 App「喂食计划」中设置，每日最多可设 10 餐，每餐 1 至 20 份，每份约 8 克。",
+          "score": 0.995354442450284
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 995,
+          "category": "商品规格手册",
+          "section_path": "商品规格手册 / 自动喂食器 基础版(型号 MH-FD10)",
+          "question": "自动喂食器 基础版(型号 MH-FD10)",
+          "answer": "- 型号:MH-FD10\n- 粮桶容量:4L\n- 核心功能:定时定量投喂,每日最多 6 餐,语音呼唤进食\n- 供电:市电供电 + 4 节 5 号电池断电应急\n- 说明:基础版不含摄像头与 App 远程投喂",
+          "score": 0.6075467532455364
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 996,
+          "category": "商品规格手册",
+          "section_path": "商品规格手册 / 自动喂食器 摄像头版(型号 MH-FD30)",
+          "question": "自动喂食器 摄像头版(型号 MH-FD30)",
+          "answer": "- 型号:MH-FD30\n- 粮桶容量:6L\n- 核心功能:1080P 摄像头、双向语音、App 远程手动投喂与定时投喂\n- 供电:市电供电 + 内置应急电池\n- 说明:摄像头版支持视频回看,需连接 2.4G Wi-Fi",
+          "score": 0.2583259885691872
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 937,
+          "category": "MH-FD 系列自动喂食器使用指南",
+          "section_path": "MH-FD 系列自动喂食器使用指南 / 呼唤录音",
+          "question": "呼唤录音",
+          "answer": "可录制一段最长 10 秒的呼唤语音，每次出粮时自动播放，帮助猫咪形成进食习惯；不录制时播放默认提示音。",
+          "score": 0.005301894869402149
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 919,
+          "category": "售后手册",
+          "section_path": "售后手册 / 常见故障自查",
+          "question": "常见故障自查",
+          "answer": "- 饮水机不出水:检查水位是否低于最低线、水泵是否卡阻,断电清洗水泵后重试。\n- 猫砂盆报错:清空废砂盒并检查滚筒是否卡砂,重启设备;仍报错联系售后。\n- 喂食器卡粮:检查粮食颗粒直径是否超 12mm、粮桶是否受潮结块,清理出粮口后重试。\n- 摄像头离线:确认 Wi-Fi 为 2.4G 频段、信号良好,重启设备或在 App 内重新配网。",
+          "score": 0.003469890732315233
+        }
+      ],
+      "expected_points": [
+        "每日最多可设 10 餐"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "B62",
+      "question": "MH-FD10 的喂食计划怎么设置",
+      "queries": [
+        "MH-FD10 的喂食计划怎么设置"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 935,
+          "category": "MH-FD 系列自动喂食器使用指南",
+          "section_path": "MH-FD 系列自动喂食器使用指南 / 喂食计划设置",
+          "question": "喂食计划设置",
+          "answer": "MH-FD10 通过机身按键和显示屏设置投喂时间与份数；MH-FD30 在 App「喂食计划」中设置，每日最多可设 10 餐，每餐 1 至 20 份，每份约 8 克。",
+          "score": 0.9976768374773688
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 995,
+          "category": "商品规格手册",
+          "section_path": "商品规格手册 / 自动喂食器 基础版(型号 MH-FD10)",
+          "question": "自动喂食器 基础版(型号 MH-FD10)",
+          "answer": "- 型号:MH-FD10\n- 粮桶容量:4L\n- 核心功能:定时定量投喂,每日最多 6 餐,语音呼唤进食\n- 供电:市电供电 + 4 节 5 号电池断电应急\n- 说明:基础版不含摄像头与 App 远程投喂",
+          "score": 0.6039902302356004
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 936,
+          "category": "MH-FD 系列自动喂食器使用指南",
+          "section_path": "MH-FD 系列自动喂食器使用指南 / 断网时的出粮",
+          "question": "断网时的出粮",
+          "answer": "喂食计划保存在设备本地，家中断网时仍会按已保存的计划准时出粮；恢复联网后，断网期间的出粮记录会自动补传到 App。",
+          "score": 0.4204211135122646
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 929,
+          "category": "看护摄像头使用指南（MH-CAM1 及带摄像头的喂食器）",
+          "section_path": "看护摄像头使用指南（MH-CAM1 及带摄像头的喂食器） / 隐私模式",
+          "question": "隐私模式",
+          "answer": "在 App 设备页开启「隐私模式」后，镜头转向机身内侧并暂停录像与侦测；关闭后自动恢复原有视角。也可设置每日自动开启隐私模式的时段。",
+          "score": 0.18315490754142008
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 937,
+          "category": "MH-FD 系列自动喂食器使用指南",
+          "section_path": "MH-FD 系列自动喂食器使用指南 / 呼唤录音",
+          "question": "呼唤录音",
+          "answer": "可录制一段最长 10 秒的呼唤语音，每次出粮时自动播放，帮助猫咪形成进食习惯；不录制时播放默认提示音。",
+          "score": 0.15215818132123213
+        }
+      ],
+      "expected_points": [
+        "通过机身按键和显示屏设置"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "B63",
+      "question": "MH-W60 买滤芯要买哪一款",
+      "queries": [
+        "MH-W60 买滤芯要买哪一款"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 981,
+          "category": "配件与耗材",
+          "section_path": "配件与耗材 / 饮水机滤芯型号",
+          "question": "饮水机滤芯型号",
+          "answer": "MH-W20 使用 FT-20 滤芯，MH-W40 使用 FT-40 滤芯，MH-W60 使用 FT-60 滤芯。三种滤芯尺寸不同，不可混用。",
+          "score": 0.982423116732664
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 991,
+          "category": "商品规格手册",
+          "section_path": "商品规格手册 / 自动饮水机 Pro 不锈钢(型号 MH-W60)",
+          "question": "自动饮水机 Pro 不锈钢(型号 MH-W60)",
+          "answer": "- 型号:MH-W60\n- 水箱容量:6L,304 不锈钢表面盘\n- 过滤:双滤芯并联,建议每 4 周更换一次滤芯\n- 核心功能:双泵冗余、无线水位提醒推送 App、缺水断电保护\n- 清洗:不锈钢面盘可高温消毒,建议每周清洗一次",
+          "score": 0.8625833300945107
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 983,
+          "category": "配件与耗材",
+          "section_path": "配件与耗材 / 配件购买入口",
+          "question": "配件购买入口",
+          "answer": "原装滤芯、除臭包、剑麻替换柱等配件，可在 App「设备」页的「耗材商城」购买，也可在商城直接搜索配件型号下单。",
+          "score": 0.06233103588192477
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 941,
+          "category": "MH-W 系列饮水机保养指南",
+          "section_path": "MH-W 系列饮水机保养指南 / 新滤芯首次使用",
+          "question": "新滤芯首次使用",
+          "answer": "新滤芯拆封后，先用清水浸泡 5 分钟并轻轻挤压排出内部气泡，再装入饮水机，可避免初期出水带黑色炭粉。",
+          "score": 0.057811609913169706
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 990,
+          "category": "商品规格手册",
+          "section_path": "商品规格手册 / 自动饮水机 Plus(型号 MH-W40)",
+          "question": "自动饮水机 Plus(型号 MH-W40)",
+          "answer": "- 型号:MH-W40\n- 水箱容量:4L\n- 过滤:五重过滤棉 + 椰壳活性炭,建议每 3 周更换一次滤芯\n- 核心功能:UV 紫外杀菌、静音变频水泵、缺水断电保护\n- 清洗:整机可拆分水洗,建议每周清洗一次",
+          "score": 0.015845361188137366
+        }
+      ],
+      "expected_points": [
+        "MH-W60 使用 FT-60 滤芯"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "B64",
+      "question": "MH-W20 和 MH-W40 的滤芯能通用吗",
+      "queries": [
+        "MH-W20 和 MH-W40 的滤芯能通用吗"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 981,
+          "category": "配件与耗材",
+          "section_path": "配件与耗材 / 饮水机滤芯型号",
+          "question": "饮水机滤芯型号",
+          "answer": "MH-W20 使用 FT-20 滤芯，MH-W40 使用 FT-40 滤芯，MH-W60 使用 FT-60 滤芯。三种滤芯尺寸不同，不可混用。",
+          "score": 0.9984572676379068
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 989,
+          "category": "商品规格手册",
+          "section_path": "商品规格手册 / 自动饮水机(型号 MH-W20)",
+          "question": "自动饮水机(型号 MH-W20)",
+          "answer": "- 型号:MH-W20\n- 水箱容量:2L\n- 过滤:三重过滤棉,建议每 2 周更换一次滤芯\n- 核心功能:静音水泵、缺水断电保护、水位窗口\n- 清洗:水泵可拆卸,建议每周清洗一次",
+          "score": 0.9377830186906096
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 990,
+          "category": "商品规格手册",
+          "section_path": "商品规格手册 / 自动饮水机 Plus(型号 MH-W40)",
+          "question": "自动饮水机 Plus(型号 MH-W40)",
+          "answer": "- 型号:MH-W40\n- 水箱容量:4L\n- 过滤:五重过滤棉 + 椰壳活性炭,建议每 3 周更换一次滤芯\n- 核心功能:UV 紫外杀菌、静音变频水泵、缺水断电保护\n- 清洗:整机可拆分水洗,建议每周清洗一次",
+          "score": 0.8386797622482537
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 941,
+          "category": "MH-W 系列饮水机保养指南",
+          "section_path": "MH-W 系列饮水机保养指南 / 新滤芯首次使用",
+          "question": "新滤芯首次使用",
+          "answer": "新滤芯拆封后，先用清水浸泡 5 分钟并轻轻挤压排出内部气泡，再装入饮水机，可避免初期出水带黑色炭粉。",
+          "score": 0.052521674709736586
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 983,
+          "category": "配件与耗材",
+          "section_path": "配件与耗材 / 配件购买入口",
+          "question": "配件购买入口",
+          "answer": "原装滤芯、除臭包、剑麻替换柱等配件，可在 App「设备」页的「耗材商城」购买，也可在商城直接搜索配件型号下单。",
+          "score": 0.04840595740372121
+        }
+      ],
+      "expected_points": [
+        "MH-W20 使用 FT-20 滤芯",
+        "MH-W40 使用 FT-40 滤芯",
+        "不可混用"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "B65",
+      "question": "MH-LP200 的垃圾袋和 MH-LP100 能通用吗",
+      "queries": [
+        "MH-LP200 的垃圾袋和 MH-LP100 能通用吗"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 982,
+          "category": "配件与耗材",
+          "section_path": "配件与耗材 / 猫砂盆耗材型号",
+          "question": "猫砂盆耗材型号",
+          "answer": "MH-LP100 与 MH-LP50 使用 DC-1 除臭包，MH-LP200 使用 DC-2 大容量除臭包；BG-50 垃圾袋三款猫砂盆通用。",
+          "score": 0.9960082716305863
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 988,
+          "category": "商品规格手册",
+          "section_path": "商品规格手册 / 智能猫砂盆 Max(型号 MH-LP200)",
+          "question": "智能猫砂盆 Max(型号 MH-LP200)",
+          "answer": "- 型号:MH-LP200\n- 适用猫咪体重:2kg 至 12kg,适合大型猫与多猫家庭\n- 猫砂容量:12L,废砂盒容量约 10 天(单猫)\n- 核心功能:超大滚筒、双重称重防夹、活性炭除臭、App 多猫健康档案\n- 供电:220V 市电\n- 清理提示:多猫家庭建议每 3 至 5 天倾倒一次废砂盒",
+          "score": 0.34565725584596585
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 986,
+          "category": "商品规格手册",
+          "section_path": "商品规格手册 / 智能猫砂盆 Pro(型号 MH-LP100)",
+          "question": "智能猫砂盆 Pro(型号 MH-LP100)",
+          "answer": "- 型号:MH-LP100\n- 适用猫咪体重:1.5kg 至 8kg\n- 猫砂容量:9L,废砂盒容量约 7 天(单猫)\n- 核心功能:自动感应清理、活性炭除臭、App 远程监控与健康记录\n- 供电:220V 市电,断电后配置自动保存\n- 清理提示:废砂盒满时 App 推送提醒,建议每 5 至 7 天倾倒一次",
+          "score": 0.33589523051565395
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 949,
+          "category": "MH-LP 系列智能猫砂盆使用与保养",
+          "section_path": "MH-LP 系列智能猫砂盆使用与保养 / 幼猫使用建议",
+          "question": "幼猫使用建议",
+          "answer": "体重不足 1.5kg 的幼猫可能无法被重量感应识别，存在自动清理时猫在盆内的风险，建议切换为手动清理模式，待体重达标后再开启自动清理。",
+          "score": 0.01028830113371619
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 948,
+          "category": "MH-LP 系列智能猫砂盆使用与保养",
+          "section_path": "MH-LP 系列智能猫砂盆使用与保养 / 新猫适应期",
+          "question": "新猫适应期",
+          "answer": "猫咪初次接触自动猫砂盆时，建议先关闭自动清理 3 至 5 天，并在新砂中混入少量原来用过的猫砂，帮助猫咪熟悉气味；确认猫咪正常如厕后再开启自动模式。",
+          "score": 0.006641112642077409
+        }
+      ],
+      "expected_points": [
+        "BG-50 垃圾袋三款猫砂盆通用"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "B66",
+      "question": "MH-LP50 的除臭包和 MH-LP100 一样吗",
+      "queries": [
+        "MH-LP50 的除臭包和 MH-LP100 一样吗"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 982,
+          "category": "配件与耗材",
+          "section_path": "配件与耗材 / 猫砂盆耗材型号",
+          "question": "猫砂盆耗材型号",
+          "answer": "MH-LP100 与 MH-LP50 使用 DC-1 除臭包，MH-LP200 使用 DC-2 大容量除臭包；BG-50 垃圾袋三款猫砂盆通用。",
+          "score": 0.994466612060986
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 987,
+          "category": "商品规格手册",
+          "section_path": "商品规格手册 / 智能猫砂盆 Lite(型号 MH-LP50)",
+          "question": "智能猫砂盆 Lite(型号 MH-LP50)",
+          "answer": "- 型号:MH-LP50\n- 适用猫咪体重:1.5kg 至 6kg\n- 猫砂容量:6L\n- 核心功能:自动感应清理、物理除臭盖板;不含 App 联网功能\n- 与 Pro 差异:Lite 无 App 远程监控与健康记录,价格更低,适合单猫家庭",
+          "score": 0.8776866156761532
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 983,
+          "category": "配件与耗材",
+          "section_path": "配件与耗材 / 配件购买入口",
+          "question": "配件购买入口",
+          "answer": "原装滤芯、除臭包、剑麻替换柱等配件，可在 App「设备」页的「耗材商城」购买，也可在商城直接搜索配件型号下单。",
+          "score": 0.4386950142983659
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 986,
+          "category": "商品规格手册",
+          "section_path": "商品规格手册 / 智能猫砂盆 Pro(型号 MH-LP100)",
+          "question": "智能猫砂盆 Pro(型号 MH-LP100)",
+          "answer": "- 型号:MH-LP100\n- 适用猫咪体重:1.5kg 至 8kg\n- 猫砂容量:9L,废砂盒容量约 7 天(单猫)\n- 核心功能:自动感应清理、活性炭除臭、App 远程监控与健康记录\n- 供电:220V 市电,断电后配置自动保存\n- 清理提示:废砂盒满时 App 推送提醒,建议每 5 至 7 天倾倒一次",
+          "score": 0.4213732332760194
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 950,
+          "category": "MH-LP 系列智能猫砂盆使用与保养",
+          "section_path": "MH-LP 系列智能猫砂盆使用与保养 / 除臭包更换",
+          "question": "除臭包更换",
+          "answer": "活性炭除臭包建议每 30 天更换一次；多猫家庭或气味明显时可缩短为 20 天。更换时打开顶盖取出旧包，按卡槽方向放入新包即可。",
+          "score": 0.38496994756908237
+        }
+      ],
+      "expected_points": [
+        "MH-LP100 与 MH-LP50 使用 DC-1 除臭包"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "C1",
+      "question": "东西不想要了还能无理由退不",
+      "queries": [
+        "东西不想要了还能无理由退不"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 972,
+          "category": "退货退款政策 / 无理由退货",
+          "section_path": "退货退款政策 / 无理由退货 / 适用范围",
+          "question": "适用范围",
+          "answer": "自签收之日起 7 天内,商品完好、不影响二次销售的,支持无理由退货。定制类、生鲜类商品除外。",
+          "score": 0.8791467675095294
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 979,
+          "category": "退货退款政策",
+          "section_path": "退货退款政策 / 不支持退货的商品",
+          "question": "不支持退货的商品",
+          "answer": "定制类、生鲜类、已拆封的猫砂等消耗品,以及标注「不支持无理由退货」的商品,非质量问题不支持退货。",
+          "score": 0.8233283989793668
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 998,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 退货政策是什么",
+          "question": "退货政策是什么",
+          "answer": "支持 7 天无理由退货,商品需保持完好、不影响二次销售,具体以平台售后规则为准。",
+          "score": 0.7141298953091939
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 980,
+          "category": "退货退款政策",
+          "section_path": "退货退款政策 / 预售与定金",
+          "question": "预售与定金",
+          "answer": "预售商品以详情页标注的时间发货;定金支付后不支持无理由退定金,尾款未按时支付的,定金按活动规则处理。",
+          "score": 0.4853405063270388
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 976,
+          "category": "退货退款政策",
+          "section_path": "退货退款政策 / 退换货运费承担",
+          "question": "退换货运费承担",
+          "answer": "无理由退货的退回运费由买家承担;因商品质量问题、发错货、少发漏发导致的退换货,运费由平台承担。运费承担以平台售后规则最终判定为准。",
+          "score": 0.18713268216242657
+        }
+      ],
+      "expected_points": [
+        "7 天无理由退货",
+        "商品需保持完好、不影响二次销售"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "C2",
+      "question": "钱退到哪儿,到账时间有准数吗",
+      "queries": [
+        "钱退到哪儿",
+        "到账时间有准数吗",
+        "钱退到哪儿,到账时间有准数吗"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 973,
+          "category": "退货退款政策 / 无理由退货",
+          "section_path": "退货退款政策 / 无理由退货 / 退款时效",
+          "question": "退款时效",
+          "answer": "退货商品经平台核验通过后,退款原路退回,到账时效以平台售后规则为准。售后手册中的退款 3 个工作日指问题处理时限,不承诺 3 个工作日到账。",
+          "score": 0.743540623165219
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 999,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 如何申请退款",
+          "question": "如何申请退款",
+          "answer": "在「我的订单」找到对应订单点击「申请退款」,按提示提交,审核通过后原路退回。",
+          "score": 0.7377254126465677
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 916,
+          "category": "售后手册",
+          "section_path": "售后手册 / 常见问题处理时限",
+          "question": "常见问题处理时限",
+          "answer": "上表记录的是客服首次响应与问题处理时限；其中退款的 3 个工作日是处理时限，不是退款实际到账时间。",
+          "score": 0.47694507098688527
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 969,
+          "category": "积分与优惠券细则",
+          "section_path": "积分与优惠券细则 / 退款后优惠券退回",
+          "question": "退款后优惠券退回",
+          "answer": "订单整单退款且优惠券仍在有效期内的，优惠券退回原账户；已过期的优惠券不再退回。部分退款时不退回优惠券，优惠金额按商品金额比例分摊后扣减退款。",
+          "score": 0.19667186883218812
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 962,
+          "category": "物流异常处理",
+          "section_path": "物流异常处理 / 拒收后的退款",
+          "question": "拒收后的退款",
+          "answer": "拒收的包裹退回并完成入库核验后，平台在 2 个工作日内发起退款，款项按原支付方式退回。",
+          "score": 0.18952109132967757
+        }
+      ],
+      "expected_points": [
+        "原路退回",
+        "到账时效以平台售后规则为准"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "C3",
+      "question": "我想换个新的咋整",
+      "queries": [
+        "我想换个新的咋整"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 1000,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 换货流程怎么走",
+          "question": "换货流程怎么走",
+          "answer": "收到商品 7 天内可申请换货,联系客服登记后将商品寄回,平台核验无误后补发新品。",
+          "score": 0.40692089459690706
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 952,
+          "category": "账户与安全",
+          "section_path": "账户与安全 / 更换绑定手机号",
+          "question": "更换绑定手机号",
+          "answer": "在 App「我的」-「设置」-「账号与安全」中可更换绑定手机号，需先通过原手机号验证码校验。原手机号已停用、无法接收验证码的，可选择「原号码不可用」提交身份核验申请，人工审核需 1 至 3 个工作日，审核通过后短信通知新号码。",
+          "score": 0.23934934732271163
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 925,
+          "category": "App 设备管理",
+          "section_path": "App 设备管理 / 更换路由器后重新配网",
+          "question": "更换路由器后重新配网",
+          "answer": "更换路由器或修改 Wi-Fi 密码后，长按设备配网键 5 秒，待指示灯快速闪烁，再在 App 中重新添加设备并输入新的 Wi-Fi 信息。",
+          "score": 0.08694165672789168
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 957,
+          "category": "发票补充规则",
+          "section_path": "发票补充规则 / 发票换开",
+          "question": "发票换开",
+          "answer": "发票已开具但抬头或税号填写有误的，可在订单详情页点击「申请换开」重新提交正确信息，每个订单仅限换开 1 次。",
+          "score": 0.0662060240416688
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 974,
+          "category": "退货退款政策 / 换货政策",
+          "section_path": "退货退款政策 / 换货政策 / 换货条件",
+          "question": "换货条件",
+          "answer": "收到商品 7 天内,商品完好且配件齐全的,可申请一次同款换货;不同型号或颜色需先退货再重新下单。",
+          "score": 0.0651275468396235
+        }
+      ],
+      "expected_points": [
+        "7 天内可申请换货",
+        "联系客服登记",
+        "将商品寄回",
+        "平台核验无误后补发新品"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "C4",
+      "question": "今儿下单能不能马上给我发货",
+      "queries": [
+        "今儿下单能不能马上给我发货"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 1001,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 发货时效多久",
+          "question": "发货时效多久",
+          "answer": "现货商品付款后 48 小时内发货,预售商品以商品详情页标注的发货时间为准。",
+          "score": 0.2559011194025191
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 980,
+          "category": "退货退款政策",
+          "section_path": "退货退款政策 / 预售与定金",
+          "question": "预售与定金",
+          "answer": "预售商品以详情页标注的时间发货;定金支付后不支持无理由退定金,尾款未按时支付的,定金按活动规则处理。",
+          "score": 0.0662060240416688
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 1009,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 商品缺货多久补货",
+          "question": "商品缺货多久补货",
+          "answer": "现货售罄的商品通常 3 至 7 天内补货,可在商品页点击「到货通知」,补货后系统会推送提醒。",
+          "score": 0.015424552081841137
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 1007,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 配送范围与偏远地区",
+          "question": "配送范围与偏远地区",
+          "answer": "全国大部分地区支持配送,新疆、西藏、内蒙古等偏远地区运费另计且时效顺延;港澳台及海外暂不支持自营配送。",
+          "score": 0.014063627043245475
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 974,
+          "category": "退货退款政策 / 换货政策",
+          "section_path": "退货退款政策 / 换货政策 / 换货条件",
+          "question": "换货条件",
+          "answer": "收到商品 7 天内,商品完好且配件齐全的,可申请一次同款换货;不同型号或颜色需先退货再重新下单。",
+          "score": 0.01342825474196852
+        }
+      ],
+      "expected_points": [
+        "48 小时内"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "C5",
+      "question": "我这一单没买够九十九块邮费怎么算",
+      "queries": [
+        "我这一单没买够九十九块邮费怎么算"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 1002,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 运费怎么算",
+          "question": "运费怎么算",
+          "answer": "单笔订单满 99 元包邮,未满收取 10 元运费,偏远地区运费另计。邮费即运费,按此规则收取。",
+          "score": 0.9845160126963748
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 1007,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 配送范围与偏远地区",
+          "question": "配送范围与偏远地区",
+          "answer": "全国大部分地区支持配送,新疆、西藏、内蒙古等偏远地区运费另计且时效顺延;港澳台及海外暂不支持自营配送。",
+          "score": 0.014392336369436931
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 1011,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 会员运费权益",
+          "question": "会员运费权益",
+          "answer": "金卡会员每月享 3 次免运费权益,银卡会员享 1 次;权益不与偏远地区附加运费冲抵,当月未用完不结转。",
+          "score": 0.0030160662173845665
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 922,
+          "category": "售后手册",
+          "section_path": "售后手册 / 会员专属售后权益",
+          "question": "会员专属售后权益",
+          "answer": "金卡会员享优先客服接入与上门取件退换货;银卡会员享退换货运费权益 1 次/月。具体权益以会员中心页面标注为准。",
+          "score": 0.0028671585933937867
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 975,
+          "category": "退货退款政策 / 换货政策",
+          "section_path": "退货退款政策 / 换货政策 / 换货运费",
+          "question": "换货运费",
+          "answer": "非质量问题的换货,往返运费由买家承担;因质量问题或发错货的换货,往返运费由平台承担。",
+          "score": 0.001817283116449832
+        }
+      ],
+      "expected_points": [
+        "未满收取 10 元运费"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "C6",
+      "question": "电子发票在哪儿申请,得等几天",
+      "queries": [
+        "电子发票在哪儿申请？",
+        "电子发票得等几天？",
+        "电子发票在哪儿申请,得等几天"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 1003,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 发票如何开具",
+          "question": "发票如何开具",
+          "answer": "在「我的订单」-「申请开票」提交抬头与税号,电子发票将于 3 个工作日内发送至邮箱。",
+          "score": 0.8946054517822124
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 956,
+          "category": "发票补充规则",
+          "section_path": "发票补充规则 / 开票申请期限",
+          "question": "开票申请期限",
+          "answer": "订单确认收货后 30 天内可申请开具发票，超过期限的订单不再受理开票申请。",
+          "score": 0.2840792137370876
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 958,
+          "category": "发票补充规则",
+          "section_path": "发票补充规则 / 增值税专用发票",
+          "question": "增值税专用发票",
+          "answer": "企业用户可申请增值税专用发票，申请时除抬头与税号外，还需填写注册地址、注册电话、开户银行及银行账号，信息需与营业执照及开户信息一致。",
+          "score": 0.02665773968397867
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 915,
+          "category": "售后手册",
+          "section_path": "售后手册 / 常见问题处理时限",
+          "question": "常见问题处理时限",
+          "answer": "| 问题类型 | 首次响应 | 处理时限 |\n| --- | --- | --- |\n| 退款 | 2 小时 | 3 个工作日 |\n| 换货 | 2 小时 | 5 个工作日 |\n| 维修 | 4 小时 | 7 个工作日 |\n| 投诉 | 1 小时 | 3 个工作日 |\n| 发票 | 4 小时 | 3 个工作日 |\n| 物流异常 | 2 小时 | 5 个工作日 |\n| 商品咨询 | 1 小时 | 当日 |\n| 价格保护 | 2 小时 | 3 个工作日 |\n| 账户问题 | 2 小时 | 3 个工作日 |\n| 退换货运费 | 2 小时 | 3 个工作日 |\n| 缺货补发 | 2 小时 | 5 个工作日 |\n| 其他 | 4 小时 | 7 个工作日 |",
+          "score": 0.009974920824078677
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 916,
+          "category": "售后手册",
+          "section_path": "售后手册 / 常见问题处理时限",
+          "question": "常见问题处理时限",
+          "answer": "上表记录的是客服首次响应与问题处理时限；其中退款的 3 个工作日是处理时限，不是退款实际到账时间。",
+          "score": 0.008745181682035147
+        }
+      ],
+      "expected_points": [
+        "我的订单",
+        "申请开票",
+        "提交抬头与税号",
+        "3 个工作日内发送至邮箱"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点（开票期限条款改为 30 天后复核，#1 同时回答申请入口与发送时效）"
+    },
+    {
+      "case_id": "C61",
+      "question": "换了新手机号，账号上那个旧号咋改",
+      "queries": [
+        "换了新手机号，账号上那个旧号咋改"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 952,
+          "category": "账户与安全",
+          "section_path": "账户与安全 / 更换绑定手机号",
+          "question": "更换绑定手机号",
+          "answer": "在 App「我的」-「设置」-「账号与安全」中可更换绑定手机号，需先通过原手机号验证码校验。原手机号已停用、无法接收验证码的，可选择「原号码不可用」提交身份核验申请，人工审核需 1 至 3 个工作日，审核通过后短信通知新号码。",
+          "score": 0.9764007056485348
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 953,
+          "category": "账户与安全",
+          "section_path": "账户与安全 / 登录密码找回",
+          "question": "登录密码找回",
+          "answer": "在登录页点击「忘记密码」，通过绑定手机号接收验证码即可重置登录密码。连续输错密码 5 次，账号将被锁定 30 分钟，锁定期间可改用验证码登录。",
+          "score": 0.022977369910025615
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 923,
+          "category": "App 设备管理",
+          "section_path": "App 设备管理 / 家庭成员共享设备",
+          "question": "家庭成员共享设备",
+          "answer": "在 App 设备页点击「共享」，输入家人的注册手机号即可发出邀请。每台设备最多共享给 5 位家庭成员，被共享者可以查看和操作设备，但不能删除设备或再次共享。",
+          "score": 0.010693757736175494
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 926,
+          "category": "App 设备管理",
+          "section_path": "App 设备管理 / 设备送人前解绑",
+          "question": "设备送人前解绑",
+          "answer": "设备赠送他人前，需在 App 设备页选择「删除设备」完成解绑，否则对方无法添加该设备。解绑后设备上的本地喂食计划与录像会被清除。",
+          "score": 0.003111508539858309
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 925,
+          "category": "App 设备管理",
+          "section_path": "App 设备管理 / 更换路由器后重新配网",
+          "question": "更换路由器后重新配网",
+          "answer": "更换路由器或修改 Wi-Fi 密码后，长按设备配网键 5 秒，待指示灯快速闪烁，再在 App 中重新添加设备并输入新的 Wi-Fi 信息。",
+          "score": 0.002521268321045645
+        }
+      ],
+      "expected_points": [
+        "原手机号验证码校验",
+        "「账号与安全」"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "C62",
+      "question": "旧号码早停机了收不到码，还能换绑不",
+      "queries": [
+        "旧号码早停机了收不到码，还能换绑不"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 952,
+          "category": "账户与安全",
+          "section_path": "账户与安全 / 更换绑定手机号",
+          "question": "更换绑定手机号",
+          "answer": "在 App「我的」-「设置」-「账号与安全」中可更换绑定手机号，需先通过原手机号验证码校验。原手机号已停用、无法接收验证码的，可选择「原号码不可用」提交身份核验申请，人工审核需 1 至 3 个工作日，审核通过后短信通知新号码。",
+          "score": 0.9772408443444813
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 953,
+          "category": "账户与安全",
+          "section_path": "账户与安全 / 登录密码找回",
+          "question": "登录密码找回",
+          "answer": "在登录页点击「忘记密码」，通过绑定手机号接收验证码即可重置登录密码。连续输错密码 5 次，账号将被锁定 30 分钟，锁定期间可改用验证码登录。",
+          "score": 0.207535754989287
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 926,
+          "category": "App 设备管理",
+          "section_path": "App 设备管理 / 设备送人前解绑",
+          "question": "设备送人前解绑",
+          "answer": "设备赠送他人前，需在 App 设备页选择「删除设备」完成解绑，否则对方无法添加该设备。解绑后设备上的本地喂食计划与录像会被清除。",
+          "score": 0.004433765200643682
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 918,
+          "category": "售后手册",
+          "section_path": "售后手册 / 设备安装与激活",
+          "question": "设备安装与激活",
+          "answer": "智能设备首次使用需下载「喵喵优选」App,按说明书扫码添加设备并连接 2.4G Wi-Fi 完成激活;猫爬架等非联网商品按随附图解自行组装。",
+          "score": 0.003914823605637168
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 925,
+          "category": "App 设备管理",
+          "section_path": "App 设备管理 / 更换路由器后重新配网",
+          "question": "更换路由器后重新配网",
+          "answer": "更换路由器或修改 Wi-Fi 密码后，长按设备配网键 5 秒，待指示灯快速闪烁，再在 App 中重新添加设备并输入新的 Wi-Fi 信息。",
+          "score": 0.002208388796090225
+        }
+      ],
+      "expected_points": [
+        "原号码不可用",
+        "1 至 3 个工作日"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "C63",
+      "question": "密码想不起来了登不上去",
+      "queries": [
+        "密码想不起来了登不上去"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 953,
+          "category": "账户与安全",
+          "section_path": "账户与安全 / 登录密码找回",
+          "question": "登录密码找回",
+          "answer": "在登录页点击「忘记密码」，通过绑定手机号接收验证码即可重置登录密码。连续输错密码 5 次，账号将被锁定 30 分钟，锁定期间可改用验证码登录。",
+          "score": 0.5402569102257511
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 925,
+          "category": "App 设备管理",
+          "section_path": "App 设备管理 / 更换路由器后重新配网",
+          "question": "更换路由器后重新配网",
+          "answer": "更换路由器或修改 Wi-Fi 密码后，长按设备配网键 5 秒，待指示灯快速闪烁，再在 App 中重新添加设备并输入新的 Wi-Fi 信息。",
+          "score": 0.3016705470899395
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 918,
+          "category": "售后手册",
+          "section_path": "售后手册 / 设备安装与激活",
+          "question": "设备安装与激活",
+          "answer": "智能设备首次使用需下载「喵喵优选」App,按说明书扫码添加设备并连接 2.4G Wi-Fi 完成激活;猫爬架等非联网商品按随附图解自行组装。",
+          "score": 0.21650809166751123
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 919,
+          "category": "售后手册",
+          "section_path": "售后手册 / 常见故障自查",
+          "question": "常见故障自查",
+          "answer": "- 饮水机不出水:检查水位是否低于最低线、水泵是否卡阻,断电清洗水泵后重试。\n- 猫砂盆报错:清空废砂盒并检查滚筒是否卡砂,重启设备;仍报错联系售后。\n- 喂食器卡粮:检查粮食颗粒直径是否超 12mm、粮桶是否受潮结块,清理出粮口后重试。\n- 摄像头离线:确认 Wi-Fi 为 2.4G 频段、信号良好,重启设备或在 App 内重新配网。",
+          "score": 0.1575252654043627
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 924,
+          "category": "App 设备管理",
+          "section_path": "App 设备管理 / 固件升级",
+          "question": "固件升级",
+          "answer": "有新固件时 App 会推送升级提示，升级过程约 5 分钟。升级期间请保持设备通电和联网，中途断电可能导致升级失败，需要重新升级。",
+          "score": 0.14804719803168948
+        }
+      ],
+      "expected_points": [
+        "「忘记密码」",
+        "重置登录密码"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "C64",
+      "question": "刚才密码试错好几次被锁了，要等多久",
+      "queries": [
+        "刚才密码试错好几次被锁了，要等多久"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 953,
+          "category": "账户与安全",
+          "section_path": "账户与安全 / 登录密码找回",
+          "question": "登录密码找回",
+          "answer": "在登录页点击「忘记密码」，通过绑定手机号接收验证码即可重置登录密码。连续输错密码 5 次，账号将被锁定 30 分钟，锁定期间可改用验证码登录。",
+          "score": 0.8027102434082559
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 925,
+          "category": "App 设备管理",
+          "section_path": "App 设备管理 / 更换路由器后重新配网",
+          "question": "更换路由器后重新配网",
+          "answer": "更换路由器或修改 Wi-Fi 密码后，长按设备配网键 5 秒，待指示灯快速闪烁，再在 App 中重新添加设备并输入新的 Wi-Fi 信息。",
+          "score": 0.018159511710261943
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 917,
+          "category": "售后手册",
+          "section_path": "售后手册 / 保修说明",
+          "question": "保修说明",
+          "answer": "电子类商品保修 12 个月,自签收日起算;人为损坏不在保修范围。",
+          "score": 0.017242777557652904
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 915,
+          "category": "售后手册",
+          "section_path": "售后手册 / 常见问题处理时限",
+          "question": "常见问题处理时限",
+          "answer": "| 问题类型 | 首次响应 | 处理时限 |\n| --- | --- | --- |\n| 退款 | 2 小时 | 3 个工作日 |\n| 换货 | 2 小时 | 5 个工作日 |\n| 维修 | 4 小时 | 7 个工作日 |\n| 投诉 | 1 小时 | 3 个工作日 |\n| 发票 | 4 小时 | 3 个工作日 |\n| 物流异常 | 2 小时 | 5 个工作日 |\n| 商品咨询 | 1 小时 | 当日 |\n| 价格保护 | 2 小时 | 3 个工作日 |\n| 账户问题 | 2 小时 | 3 个工作日 |\n| 退换货运费 | 2 小时 | 3 个工作日 |\n| 缺货补发 | 2 小时 | 5 个工作日 |\n| 其他 | 4 小时 | 7 个工作日 |",
+          "score": 0.012527931992744799
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 924,
+          "category": "App 设备管理",
+          "section_path": "App 设备管理 / 固件升级",
+          "question": "固件升级",
+          "answer": "有新固件时 App 会推送升级提示，升级过程约 5 分钟。升级期间请保持设备通电和联网，中途断电可能导致升级失败，需要重新升级。",
+          "score": 0.012100385813544712
+        }
+      ],
+      "expected_points": [
+        "锁定 30 分钟",
+        "改用验证码登录"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "C65",
+      "question": "号突然被封了是咋回事",
+      "queries": [
+        "号突然被封了是咋回事"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 954,
+          "category": "账户与安全",
+          "section_path": "账户与安全 / 账号异常冻结",
+          "question": "账号异常冻结",
+          "answer": "系统检测到异地频繁登录、短时间批量下单等异常行为时，会临时冻结账号以保护资金安全。冻结期间无法下单与使用积分，请联系人工客服完成身份核验，核验通过后即可解冻。",
+          "score": 0.2897734948372364
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 953,
+          "category": "账户与安全",
+          "section_path": "账户与安全 / 登录密码找回",
+          "question": "登录密码找回",
+          "answer": "在登录页点击「忘记密码」，通过绑定手机号接收验证码即可重置登录密码。连续输错密码 5 次，账号将被锁定 30 分钟，锁定期间可改用验证码登录。",
+          "score": 0.02194825371486785
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 952,
+          "category": "账户与安全",
+          "section_path": "账户与安全 / 更换绑定手机号",
+          "question": "更换绑定手机号",
+          "answer": "在 App「我的」-「设置」-「账号与安全」中可更换绑定手机号，需先通过原手机号验证码校验。原手机号已停用、无法接收验证码的，可选择「原号码不可用」提交身份核验申请，人工审核需 1 至 3 个工作日，审核通过后短信通知新号码。",
+          "score": 0.002768385516913781
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 932,
+          "category": "设备故障代码",
+          "section_path": "设备故障代码 / 猫砂盆故障代码",
+          "question": "猫砂盆故障代码",
+          "answer": "| 代码 | 含义 | 处理办法 |\n| --- | --- | --- |\n| E1 | 滚筒转动受阻 | 断电后清理滚筒内结块与异物，再重新上电 |\n| E2 | 废砂盒未放到位 | 取出废砂盒重新推入，听到卡扣声即可 |\n| E3 | 称重传感器异常 | 将猫砂盆放在平整地面，在 App 中执行称重校准 |\n| E4 | 电机过载保护 | 断电静置 10 分钟后重启，频繁出现请联系售后 |\n| E5 | Wi-Fi 连接失败 | 检查路由器信号并在 App 中重新配网 |",
+          "score": 0.0024154832575663415
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 924,
+          "category": "App 设备管理",
+          "section_path": "App 设备管理 / 固件升级",
+          "question": "固件升级",
+          "answer": "有新固件时 App 会推送升级提示，升级过程约 5 分钟。升级期间请保持设备通电和联网，中途断电可能导致升级失败，需要重新升级。",
+          "score": 0.0011832797695011071
+        }
+      ],
+      "expected_points": [
+        "异地频繁登录、短时间批量下单",
+        "联系人工客服完成身份核验"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "C66",
+      "question": "地址簿能存多少个地址啊",
+      "queries": [
+        "地址簿能存多少个地址啊"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 955,
+          "category": "账户与安全",
+          "section_path": "账户与安全 / 收货地址管理",
+          "question": "收货地址管理",
+          "answer": "每个账号最多保存 20 个收货地址，可将其中一个设为默认地址，下单时自动带出。地址簿中的修改只影响之后的新订单，不会改动已提交订单的收货信息。",
+          "score": 0.985882106574795
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 923,
+          "category": "App 设备管理",
+          "section_path": "App 设备管理 / 家庭成员共享设备",
+          "question": "家庭成员共享设备",
+          "answer": "在 App 设备页点击「共享」，输入家人的注册手机号即可发出邀请。每台设备最多共享给 5 位家庭成员，被共享者可以查看和操作设备，但不能删除设备或再次共享。",
+          "score": 0.0019117693602301456
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 997,
+          "category": "商品规格手册",
+          "section_path": "商品规格手册 / 全景看护摄像头(型号 MH-CAM1)",
+          "question": "全景看护摄像头(型号 MH-CAM1)",
+          "answer": "- 型号:MH-CAM1\n- 画质:2K 分辨率,355° 水平旋转、90° 俯仰\n- 核心功能:移动侦测报警、夜视、双向语音、逗猫激光\n- 存储:支持最大 128G TF 卡或云存储\n- 供电:Type-C 供电,需连接 2.4G Wi-Fi",
+          "score": 0.001142449539817763
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 957,
+          "category": "发票补充规则",
+          "section_path": "发票补充规则 / 发票换开",
+          "question": "发票换开",
+          "answer": "发票已开具但抬头或税号填写有误的，可在订单详情页点击「申请换开」重新提交正确信息，每个订单仅限换开 1 次。",
+          "score": 0.0005792916699214216
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 927,
+          "category": "看护摄像头使用指南（MH-CAM1 及带摄像头的喂食器）",
+          "section_path": "看护摄像头使用指南（MH-CAM1 及带摄像头的喂食器） / 云存储体验",
+          "question": "云存储体验",
+          "answer": "新设备首次激活后赠送 30 天云存储体验，体验期内的事件录像在云端循环保存 7 天。体验到期后可在 App「云服务」中自行选择是否续费。",
+          "score": 0.00014539114412297376
+        }
+      ],
+      "expected_points": [
+        "最多保存 20 个收货地址"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "D1",
+      "question": "你们卖不卖活体宠物,能在这买猫吗",
+      "queries": [
+        "你们卖不卖活体宠物？",
+        "能在这买猫吗？",
+        "你们卖不卖活体宠物,能在这买猫吗"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 979,
+          "category": "退货退款政策",
+          "section_path": "退货退款政策 / 不支持退货的商品",
+          "question": "不支持退货的商品",
+          "answer": "定制类、生鲜类、已拆封的猫砂等消耗品,以及标注「不支持无理由退货」的商品,非质量问题不支持退货。",
+          "score": 0.0020829707830458
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 985,
+          "category": "商品规格手册",
+          "section_path": "商品规格手册",
+          "question": "商品规格手册",
+          "answer": "本手册收录喵喵优选自营智能硬件的型号、规格与使用要点,便于按具体型号查询。",
+          "score": 0.0018895386578398718
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 1007,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 配送范围与偏远地区",
+          "question": "配送范围与偏远地区",
+          "answer": "全国大部分地区支持配送,新疆、西藏、内蒙古等偏远地区运费另计且时效顺延;港澳台及海外暂不支持自营配送。",
+          "score": 0.0012843081201339695
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 918,
+          "category": "售后手册",
+          "section_path": "售后手册 / 设备安装与激活",
+          "question": "设备安装与激活",
+          "answer": "智能设备首次使用需下载「喵喵优选」App,按说明书扫码添加设备并连接 2.4G Wi-Fi 完成激活;猫爬架等非联网商品按随附图解自行组装。",
+          "score": 0.0011030266413981568
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 983,
+          "category": "配件与耗材",
+          "section_path": "配件与耗材 / 配件购买入口",
+          "question": "配件购买入口",
+          "answer": "原装滤芯、除臭包、剑麻替换柱等配件，可在 App「设备」页的「耗材商城」购买，也可在商城直接搜索配件型号下单。",
+          "score": 0.001064962672055945
+        }
+      ],
+      "expected_points": [],
+      "expected_answerable": false,
+      "sufficient": false,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 无直接支持所问事实的原文"
+    },
+    {
+      "case_id": "D2",
+      "question": "有没有线下实体门店,可以去店里退货吗",
+      "queries": [
+        "有没有线下实体门店",
+        "可以去店里退货吗",
+        "有没有线下实体门店,可以去店里退货吗"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 998,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 退货政策是什么",
+          "question": "退货政策是什么",
+          "answer": "支持 7 天无理由退货,商品需保持完好、不影响二次销售,具体以平台售后规则为准。",
+          "score": 0.05877655584806683
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 972,
+          "category": "退货退款政策 / 无理由退货",
+          "section_path": "退货退款政策 / 无理由退货 / 适用范围",
+          "question": "适用范围",
+          "answer": "自签收之日起 7 天内,商品完好、不影响二次销售的,支持无理由退货。定制类、生鲜类商品除外。",
+          "score": 0.04130730379300428
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 979,
+          "category": "退货退款政策",
+          "section_path": "退货退款政策 / 不支持退货的商品",
+          "question": "不支持退货的商品",
+          "answer": "定制类、生鲜类、已拆封的猫砂等消耗品,以及标注「不支持无理由退货」的商品,非质量问题不支持退货。",
+          "score": 0.024099445109767945
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 999,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 如何申请退款",
+          "question": "如何申请退款",
+          "answer": "在「我的订单」找到对应订单点击「申请退款」,按提示提交,审核通过后原路退回。",
+          "score": 0.019382191201735868
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 1004,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 支持哪些支付方式",
+          "question": "支持哪些支付方式",
+          "answer": "下单支持支付宝、微信支付与主流银行储蓄卡/信用卡在线支付。暂不支持线下汇款,支付遇到问题可重试或更换支付方式。",
+          "score": 0.007695647178392188
+        }
+      ],
+      "expected_points": [],
+      "expected_answerable": false,
+      "sufficient": false,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 无直接支持所问事实的原文"
+    },
+    {
+      "case_id": "D3",
+      "question": "能不能开纸质发票邮寄给我",
+      "queries": [
+        "能不能开纸质发票邮寄给我"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 1003,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 发票如何开具",
+          "question": "发票如何开具",
+          "answer": "在「我的订单」-「申请开票」提交抬头与税号,电子发票将于 3 个工作日内发送至邮箱。",
+          "score": 0.16317856382978543
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 956,
+          "category": "发票补充规则",
+          "section_path": "发票补充规则 / 开票申请期限",
+          "question": "开票申请期限",
+          "answer": "订单确认收货后 30 天内可申请开具发票，超过期限的订单不再受理开票申请。",
+          "score": 0.024330190087675646
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 958,
+          "category": "发票补充规则",
+          "section_path": "发票补充规则 / 增值税专用发票",
+          "question": "增值税专用发票",
+          "answer": "企业用户可申请增值税专用发票，申请时除抬头与税号外，还需填写注册地址、注册电话、开户银行及银行账号，信息需与营业执照及开户信息一致。",
+          "score": 0.013121271126550958
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 959,
+          "category": "发票补充规则",
+          "section_path": "发票补充规则 / 退货后的发票处理",
+          "question": "退货后的发票处理",
+          "answer": "已开票订单发生整单退货的，原发票由系统自动红冲作废，无需买家寄回；部分退货的，原发票红冲后按实际保留商品金额重新开具。",
+          "score": 0.00989806371602365
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 957,
+          "category": "发票补充规则",
+          "section_path": "发票补充规则 / 发票换开",
+          "question": "发票换开",
+          "answer": "发票已开具但抬头或税号填写有误的，可在订单详情页点击「申请换开」重新提交正确信息，每个订单仅限换开 1 次。",
+          "score": 0.001008343541656317
+        }
+      ],
+      "expected_points": [],
+      "expected_answerable": false,
+      "sufficient": false,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 无直接支持所问事实的原文（开票期限条款改为 30 天后复核，仍无纸质发票/邮寄相关原文）"
+    },
+    {
+      "case_id": "D4",
+      "question": "有没有以旧换新的活动",
+      "queries": [
+        "有没有以旧换新的活动"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 1000,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 换货流程怎么走",
+          "question": "换货流程怎么走",
+          "answer": "收到商品 7 天内可申请换货,联系客服登记后将商品寄回,平台核验无误后补发新品。",
+          "score": 0.004663654952382039
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 974,
+          "category": "退货退款政策 / 换货政策",
+          "section_path": "退货退款政策 / 换货政策 / 换货条件",
+          "question": "换货条件",
+          "answer": "收到商品 7 天内,商品完好且配件齐全的,可申请一次同款换货;不同型号或颜色需先退货再重新下单。",
+          "score": 0.003273064970671631
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 971,
+          "category": "积分与优惠券细则",
+          "section_path": "积分与优惠券细则 / 新人专享券",
+          "question": "新人专享券",
+          "answer": "新注册用户可领取 30 元新人券包，自领取起 7 天内有效，仅限首笔订单使用，不与其他平台券同时使用。",
+          "score": 0.0024726231566347743
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 952,
+          "category": "账户与安全",
+          "section_path": "账户与安全 / 更换绑定手机号",
+          "question": "更换绑定手机号",
+          "answer": "在 App「我的」-「设置」-「账号与安全」中可更换绑定手机号，需先通过原手机号验证码校验。原手机号已停用、无法接收验证码的，可选择「原号码不可用」提交身份核验申请，人工审核需 1 至 3 个工作日，审核通过后短信通知新号码。",
+          "score": 0.0019117693602301456
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 1006,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 优惠券和满减怎么用",
+          "question": "优惠券和满减怎么用",
+          "answer": "优惠券在结算页「使用优惠券」中勾选,满减活动自动叠加在商品页标示的门槛上;同一订单一般限用一张店铺券,活动细则以页面为准。",
+          "score": 0.0011291546285049482
+        }
+      ],
+      "expected_points": [],
+      "expected_answerable": false,
+      "sufficient": false,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 无直接支持所问事实的原文"
+    },
+    {
+      "case_id": "D5",
+      "question": "大件商品能不能预约师傅上门安装",
+      "queries": [
+        "大件商品能不能预约师傅上门安装"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 922,
+          "category": "售后手册",
+          "section_path": "售后手册 / 会员专属售后权益",
+          "question": "会员专属售后权益",
+          "answer": "金卡会员享优先客服接入与上门取件退换货;银卡会员享退换货运费权益 1 次/月。具体权益以会员中心页面标注为准。",
+          "score": 0.0023781237181166506
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 1007,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 配送范围与偏远地区",
+          "question": "配送范围与偏远地区",
+          "answer": "全国大部分地区支持配送,新疆、西藏、内蒙古等偏远地区运费另计且时效顺延;港澳台及海外暂不支持自营配送。",
+          "score": 0.00138852327569001
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 964,
+          "category": "物流异常处理",
+          "section_path": "物流异常处理 / 一单多包裹",
+          "question": "一单多包裹",
+          "answer": "同一订单中的多件商品可能分为多个包裹陆续发出，订单详情页会分别显示每个包裹的运单号与物流轨迹，请以全部包裹签收为准确认收货。",
+          "score": 0.0008360902969426322
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 972,
+          "category": "退货退款政策 / 无理由退货",
+          "section_path": "退货退款政策 / 无理由退货 / 适用范围",
+          "question": "适用范围",
+          "answer": "自签收之日起 7 天内,商品完好、不影响二次销售的,支持无理由退货。定制类、生鲜类商品除外。",
+          "score": 0.0004936049895909173
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 963,
+          "category": "物流异常处理",
+          "section_path": "物流异常处理 / 驿站与快递柜取件",
+          "question": "驿站与快递柜取件",
+          "answer": "包裹被放入驿站或快递柜的，凭短信中的取件码领取。超过 3 天未取件的包裹可能被退回，退回后按拒收流程处理。",
+          "score": 0.00037702856669512123
+        }
+      ],
+      "expected_points": [],
+      "expected_answerable": false,
+      "sufficient": false,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 无直接支持所问事实的原文"
+    },
+    {
+      "case_id": "D6",
+      "question": "退货之后能不能额外补偿我一些积分",
+      "queries": [
+        "退货之后能不能额外补偿我一些积分"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 969,
+          "category": "积分与优惠券细则",
+          "section_path": "积分与优惠券细则 / 退款后优惠券退回",
+          "question": "退款后优惠券退回",
+          "answer": "订单整单退款且优惠券仍在有效期内的，优惠券退回原账户；已过期的优惠券不再退回。部分退款时不退回优惠券，优惠金额按商品金额比例分摊后扣减退款。",
+          "score": 0.07133200111491692
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 966,
+          "category": "积分与优惠券细则",
+          "section_path": "积分与优惠券细则 / 签到获取积分",
+          "question": "签到获取积分",
+          "answer": "在 App 首页每日签到可得 2 积分；连续签到满 7 天，额外奖励 10 积分，中断后重新计算连续天数。",
+          "score": 0.02194825371486785
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 967,
+          "category": "积分与优惠券细则",
+          "section_path": "积分与优惠券细则 / 积分抵扣上限",
+          "question": "积分抵扣上限",
+          "answer": "结算时积分抵扣金额不超过该笔订单实付金额的 50%，剩余部分需通过其他支付方式支付。",
+          "score": 0.019794778861558834
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 1005,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 会员等级与积分规则",
+          "question": "会员等级与积分规则",
+          "answer": "会员分为普通、银卡、金卡三档,按累计消费自动升级。每消费 1 元得 1 积分,积分可在结算时抵扣,100 积分抵 1 元。",
+          "score": 0.005448068085189641
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 959,
+          "category": "发票补充规则",
+          "section_path": "发票补充规则 / 退货后的发票处理",
+          "question": "退货后的发票处理",
+          "answer": "已开票订单发生整单退货的，原发票由系统自动红冲作废，无需买家寄回；部分退货的，原发票红冲后按实际保留商品金额重新开具。",
+          "score": 0.00389962067257789
+        }
+      ],
+      "expected_points": [],
+      "expected_answerable": false,
+      "sufficient": false,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 无直接支持所问事实的原文"
+    },
+    {
+      "case_id": "D61",
+      "question": "积分能兑换实物礼品吗",
+      "queries": [
+        "积分能兑换实物礼品吗"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 967,
+          "category": "积分与优惠券细则",
+          "section_path": "积分与优惠券细则 / 积分抵扣上限",
+          "question": "积分抵扣上限",
+          "answer": "结算时积分抵扣金额不超过该笔订单实付金额的 50%，剩余部分需通过其他支付方式支付。",
+          "score": 0.04288223716309705
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 1005,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 会员等级与积分规则",
+          "question": "会员等级与积分规则",
+          "answer": "会员分为普通、银卡、金卡三档,按累计消费自动升级。每消费 1 元得 1 积分,积分可在结算时抵扣,100 积分抵 1 元。",
+          "score": 0.01495708659314999
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 971,
+          "category": "积分与优惠券细则",
+          "section_path": "积分与优惠券细则 / 新人专享券",
+          "question": "新人专享券",
+          "answer": "新注册用户可领取 30 元新人券包，自领取起 7 天内有效，仅限首笔订单使用，不与其他平台券同时使用。",
+          "score": 0.009559399347091532
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 970,
+          "category": "积分与优惠券细则",
+          "section_path": "积分与优惠券细则 / 平台券与店铺券叠加",
+          "question": "平台券与店铺券叠加",
+          "answer": "平台通用券可与店铺券在同一订单中叠加使用，结算时先抵扣店铺券、再抵扣平台券。两张平台券之间不可叠加。",
+          "score": 0.005159623176342565
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 966,
+          "category": "积分与优惠券细则",
+          "section_path": "积分与优惠券细则 / 签到获取积分",
+          "question": "签到获取积分",
+          "answer": "在 App 首页每日签到可得 2 积分；连续签到满 7 天，额外奖励 10 积分，中断后重新计算连续天数。",
+          "score": 0.003285833291878954
+        }
+      ],
+      "expected_points": [],
+      "expected_answerable": false,
+      "sufficient": false,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 无直接支持所问事实的原文"
+    },
+    {
+      "case_id": "D62",
+      "question": "优惠券能转赠给朋友吗",
+      "queries": [
+        "优惠券能转赠给朋友吗"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 1006,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 优惠券和满减怎么用",
+          "question": "优惠券和满减怎么用",
+          "answer": "优惠券在结算页「使用优惠券」中勾选,满减活动自动叠加在商品页标示的门槛上;同一订单一般限用一张店铺券,活动细则以页面为准。",
+          "score": 0.011158031248084035
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 971,
+          "category": "积分与优惠券细则",
+          "section_path": "积分与优惠券细则 / 新人专享券",
+          "question": "新人专享券",
+          "answer": "新注册用户可领取 30 元新人券包，自领取起 7 天内有效，仅限首笔订单使用，不与其他平台券同时使用。",
+          "score": 0.005426943348925352
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 968,
+          "category": "积分与优惠券细则",
+          "section_path": "积分与优惠券细则 / 优惠券过期处理",
+          "question": "优惠券过期处理",
+          "answer": "优惠券以券面标注的有效期为准，过期后自动失效，平台不予补发或延期。",
+          "score": 0.00511967623806183
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 967,
+          "category": "积分与优惠券细则",
+          "section_path": "积分与优惠券细则 / 积分抵扣上限",
+          "question": "积分抵扣上限",
+          "answer": "结算时积分抵扣金额不超过该笔订单实付金额的 50%，剩余部分需通过其他支付方式支付。",
+          "score": 0.004215159621187134
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 969,
+          "category": "积分与优惠券细则",
+          "section_path": "积分与优惠券细则 / 退款后优惠券退回",
+          "question": "退款后优惠券退回",
+          "answer": "订单整单退款且优惠券仍在有效期内的，优惠券退回原账户；已过期的优惠券不再退回。部分退款时不退回优惠券，优惠金额按商品金额比例分摊后扣减退款。",
+          "score": 0.004117917643959035
+        }
+      ],
+      "expected_points": [],
+      "expected_answerable": false,
+      "sufficient": false,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 无直接支持所问事实的原文"
+    },
+    {
+      "case_id": "D63",
+      "question": "能用邮箱注册账号吗",
+      "queries": [
+        "能用邮箱注册账号吗"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 971,
+          "category": "积分与优惠券细则",
+          "section_path": "积分与优惠券细则 / 新人专享券",
+          "question": "新人专享券",
+          "answer": "新注册用户可领取 30 元新人券包，自领取起 7 天内有效，仅限首笔订单使用，不与其他平台券同时使用。",
+          "score": 0.00041731576067772006
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 953,
+          "category": "账户与安全",
+          "section_path": "账户与安全 / 登录密码找回",
+          "question": "登录密码找回",
+          "answer": "在登录页点击「忘记密码」，通过绑定手机号接收验证码即可重置登录密码。连续输错密码 5 次，账号将被锁定 30 分钟，锁定期间可改用验证码登录。",
+          "score": 0.00021654404989510326
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 955,
+          "category": "账户与安全",
+          "section_path": "账户与安全 / 收货地址管理",
+          "question": "收货地址管理",
+          "answer": "每个账号最多保存 20 个收货地址，可将其中一个设为默认地址，下单时自动带出。地址簿中的修改只影响之后的新订单，不会改动已提交订单的收货信息。",
+          "score": 0.00018235460794662427
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 923,
+          "category": "App 设备管理",
+          "section_path": "App 设备管理 / 家庭成员共享设备",
+          "question": "家庭成员共享设备",
+          "answer": "在 App 设备页点击「共享」，输入家人的注册手机号即可发出邀请。每台设备最多共享给 5 位家庭成员，被共享者可以查看和操作设备，但不能删除设备或再次共享。",
+          "score": 0.00016734050747377145
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 954,
+          "category": "账户与安全",
+          "section_path": "账户与安全 / 账号异常冻结",
+          "question": "账号异常冻结",
+          "answer": "系统检测到异地频繁登录、短时间批量下单等异常行为时，会临时冻结账号以保护资金安全。冻结期间无法下单与使用积分，请联系人工客服完成身份核验，核验通过后即可解冻。",
+          "score": 0.00010720880092159908
+        }
+      ],
+      "expected_points": [],
+      "expected_answerable": false,
+      "sufficient": false,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 无直接支持所问事实的原文"
+    },
+    {
+      "case_id": "D64",
+      "question": "账号能开通指纹或刷脸登录吗",
+      "queries": [
+        "账号能开通指纹或刷脸登录吗"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 953,
+          "category": "账户与安全",
+          "section_path": "账户与安全 / 登录密码找回",
+          "question": "登录密码找回",
+          "answer": "在登录页点击「忘记密码」，通过绑定手机号接收验证码即可重置登录密码。连续输错密码 5 次，账号将被锁定 30 分钟，锁定期间可改用验证码登录。",
+          "score": 0.0017140384791880215
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 954,
+          "category": "账户与安全",
+          "section_path": "账户与安全 / 账号异常冻结",
+          "question": "账号异常冻结",
+          "answer": "系统检测到异地频繁登录、短时间批量下单等异常行为时，会临时冻结账号以保护资金安全。冻结期间无法下单与使用积分，请联系人工客服完成身份核验，核验通过后即可解冻。",
+          "score": 0.001254594479971798
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 1004,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 支持哪些支付方式",
+          "question": "支持哪些支付方式",
+          "answer": "下单支持支付宝、微信支付与主流银行储蓄卡/信用卡在线支付。暂不支持线下汇款,支付遇到问题可重试或更换支付方式。",
+          "score": 0.0009888596979506555
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 922,
+          "category": "售后手册",
+          "section_path": "售后手册 / 会员专属售后权益",
+          "question": "会员专属售后权益",
+          "answer": "金卡会员享优先客服接入与上门取件退换货;银卡会员享退换货运费权益 1 次/月。具体权益以会员中心页面标注为准。",
+          "score": 0.0006878511550552459
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 971,
+          "category": "积分与优惠券细则",
+          "section_path": "积分与优惠券细则 / 新人专享券",
+          "question": "新人专享券",
+          "answer": "新注册用户可领取 30 元新人券包，自领取起 7 天内有效，仅限首笔订单使用，不与其他平台券同时使用。",
+          "score": 0.0005527786369235996
+        }
+      ],
+      "expected_points": [],
+      "expected_answerable": false,
+      "sufficient": false,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 无直接支持所问事实的原文"
+    },
+    {
+      "case_id": "D65",
+      "question": "云存储年度套餐多少钱",
+      "queries": [
+        "云存储年度套餐多少钱"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 927,
+          "category": "看护摄像头使用指南（MH-CAM1 及带摄像头的喂食器）",
+          "section_path": "看护摄像头使用指南（MH-CAM1 及带摄像头的喂食器） / 云存储体验",
+          "question": "云存储体验",
+          "answer": "新设备首次激活后赠送 30 天云存储体验，体验期内的事件录像在云端循环保存 7 天。体验到期后可在 App「云服务」中自行选择是否续费。",
+          "score": 0.006564249220774553
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 971,
+          "category": "积分与优惠券细则",
+          "section_path": "积分与优惠券细则 / 新人专享券",
+          "question": "新人专享券",
+          "answer": "新注册用户可领取 30 元新人券包，自领取起 7 天内有效，仅限首笔订单使用，不与其他平台券同时使用。",
+          "score": 0.001796149154900369
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 1011,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 会员运费权益",
+          "question": "会员运费权益",
+          "answer": "金卡会员每月享 3 次免运费权益,银卡会员享 1 次;权益不与偏远地区附加运费冲抵,当月未用完不结转。",
+          "score": 0.0008231385881888256
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 1005,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 会员等级与积分规则",
+          "question": "会员等级与积分规则",
+          "answer": "会员分为普通、银卡、金卡三档,按累计消费自动升级。每消费 1 元得 1 积分,积分可在结算时抵扣,100 积分抵 1 元。",
+          "score": 0.0006166297347617125
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 922,
+          "category": "售后手册",
+          "section_path": "售后手册 / 会员专属售后权益",
+          "question": "会员专属售后权益",
+          "answer": "金卡会员享优先客服接入与上门取件退换货;银卡会员享退换货运费权益 1 次/月。具体权益以会员中心页面标注为准。",
+          "score": 0.0003740956047302422
+        }
+      ],
+      "expected_points": [],
+      "expected_answerable": false,
+      "sufficient": false,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 无直接支持所问事实的原文"
+    },
+    {
+      "case_id": "D66",
+      "question": "固件能回退到旧版本吗",
+      "queries": [
+        "固件能回退到旧版本吗"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 924,
+          "category": "App 设备管理",
+          "section_path": "App 设备管理 / 固件升级",
+          "question": "固件升级",
+          "answer": "有新固件时 App 会推送升级提示，升级过程约 5 分钟。升级期间请保持设备通电和联网，中途断电可能导致升级失败，需要重新升级。",
+          "score": 0.025178841700601858
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 972,
+          "category": "退货退款政策 / 无理由退货",
+          "section_path": "退货退款政策 / 无理由退货 / 适用范围",
+          "question": "适用范围",
+          "answer": "自签收之日起 7 天内,商品完好、不影响二次销售的,支持无理由退货。定制类、生鲜类商品除外。",
+          "score": 0.014503579691381979
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 977,
+          "category": "退货退款政策",
+          "section_path": "退货退款政策 / 质量问题与保修",
+          "question": "质量问题与保修",
+          "answer": "电子类商品自签收起保修 12 个月,保修期内非人为损坏可申请免费维修或换货;人为损坏、超保商品维修可能收取工本费。",
+          "score": 0.0073743653082378275
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 998,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 退货政策是什么",
+          "question": "退货政策是什么",
+          "answer": "支持 7 天无理由退货,商品需保持完好、不影响二次销售,具体以平台售后规则为准。",
+          "score": 0.0066928509242848554
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 979,
+          "category": "退货退款政策",
+          "section_path": "退货退款政策 / 不支持退货的商品",
+          "question": "不支持退货的商品",
+          "answer": "定制类、生鲜类、已拆封的猫砂等消耗品,以及标注「不支持无理由退货」的商品,非质量问题不支持退货。",
+          "score": 0.005888159475804548
+        }
+      ],
+      "expected_points": [],
+      "expected_answerable": false,
+      "sufficient": false,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 无直接支持所问事实的原文"
+    },
+    {
+      "case_id": "E1",
+      "question": "我在新疆下单 80 块钱,未满包邮门槛怎么收运费,会员免运费权益能抵偏远附加费吗",
+      "queries": [
+        "我在新疆下单 80 块钱,未满包邮门槛怎么收运费",
+        "会员免运费权益能抵偏远附加费吗",
+        "我在新疆下单 80 块钱,未满包邮门槛怎么收运费,会员免运费权益能抵偏远附加费吗"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 1011,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 会员运费权益",
+          "question": "会员运费权益",
+          "answer": "金卡会员每月享 3 次免运费权益,银卡会员享 1 次;权益不与偏远地区附加运费冲抵,当月未用完不结转。",
+          "score": 0.9980956697286526
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 1002,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 运费怎么算",
+          "question": "运费怎么算",
+          "answer": "单笔订单满 99 元包邮,未满收取 10 元运费,偏远地区运费另计。邮费即运费,按此规则收取。",
+          "score": 0.7902067130085041
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 1007,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 配送范围与偏远地区",
+          "question": "配送范围与偏远地区",
+          "answer": "全国大部分地区支持配送,新疆、西藏、内蒙古等偏远地区运费另计且时效顺延;港澳台及海外暂不支持自营配送。",
+          "score": 0.24148938971519088
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 922,
+          "category": "售后手册",
+          "section_path": "售后手册 / 会员专属售后权益",
+          "question": "会员专属售后权益",
+          "answer": "金卡会员享优先客服接入与上门取件退换货;银卡会员享退换货运费权益 1 次/月。具体权益以会员中心页面标注为准。",
+          "score": 0.16066070464743032
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 1005,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 会员等级与积分规则",
+          "question": "会员等级与积分规则",
+          "answer": "会员分为普通、银卡、金卡三档,按累计消费自动升级。每消费 1 元得 1 积分,积分可在结算时抵扣,100 积分抵 1 元。",
+          "score": 0.01998515199474335
+        }
+      ],
+      "expected_points": [
+        "未满收取 10 元运费",
+        "新疆、西藏、内蒙古等偏远地区运费另计",
+        "权益不与偏远地区附加运费冲抵"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "E2",
+      "question": "东西不想要了要退货,寄回运费谁出,退款退到哪儿,到账天数能确定吗",
+      "queries": [
+        "东西不想要了要退货，寄回运费谁出？",
+        "东西不想要了要退货，退款退到哪儿？",
+        "东西不想要了要退货，到账天数能确定吗？",
+        "东西不想要了要退货,寄回运费谁出,退款退到哪儿,到账天数能确定吗"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 976,
+          "category": "退货退款政策",
+          "section_path": "退货退款政策 / 退换货运费承担",
+          "question": "退换货运费承担",
+          "answer": "无理由退货的退回运费由买家承担;因商品质量问题、发错货、少发漏发导致的退换货,运费由平台承担。运费承担以平台售后规则最终判定为准。",
+          "score": 0.9538802504524166
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 999,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 如何申请退款",
+          "question": "如何申请退款",
+          "answer": "在「我的订单」找到对应订单点击「申请退款」,按提示提交,审核通过后原路退回。",
+          "score": 0.8300437698548124
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 975,
+          "category": "退货退款政策 / 换货政策",
+          "section_path": "退货退款政策 / 换货政策 / 换货运费",
+          "question": "换货运费",
+          "answer": "非质量问题的换货,往返运费由买家承担;因质量问题或发错货的换货,往返运费由平台承担。",
+          "score": 0.7804952338575972
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 973,
+          "category": "退货退款政策 / 无理由退货",
+          "section_path": "退货退款政策 / 无理由退货 / 退款时效",
+          "question": "退款时效",
+          "answer": "退货商品经平台核验通过后,退款原路退回,到账时效以平台售后规则为准。售后手册中的退款 3 个工作日指问题处理时限,不承诺 3 个工作日到账。",
+          "score": 0.7399865091308289
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 916,
+          "category": "售后手册",
+          "section_path": "售后手册 / 常见问题处理时限",
+          "question": "常见问题处理时限",
+          "answer": "上表记录的是客服首次响应与问题处理时限；其中退款的 3 个工作日是处理时限，不是退款实际到账时间。",
+          "score": 0.616935831319445
+        }
+      ],
+      "expected_points": [
+        "7 天无理由",
+        "无理由退货的退回运费由买家承担",
+        "原路退回",
+        "到账时效以平台售后规则为准"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "E3",
+      "question": "已经拆封的猫砂非质量问题还能退吗,有疑问从哪里找人工客服",
+      "queries": [
+        "已经拆封的猫砂非质量问题还能退吗？",
+        "有疑问从哪里找人工客服？",
+        "已经拆封的猫砂非质量问题还能退吗,有疑问从哪里找人工客服"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 979,
+          "category": "退货退款政策",
+          "section_path": "退货退款政策 / 不支持退货的商品",
+          "question": "不支持退货的商品",
+          "answer": "定制类、生鲜类、已拆封的猫砂等消耗品,以及标注「不支持无理由退货」的商品,非质量问题不支持退货。",
+          "score": 0.9961155234512341
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 920,
+          "category": "售后手册",
+          "section_path": "售后手册 / 人工客服入口与时间",
+          "question": "人工客服入口与时间",
+          "answer": "App 内「我的」-「联系客服」可转接在线人工;人工客服服务时间为每日 9:00 至 22:00,高峰期请耐心等待或留言。",
+          "score": 0.17852583152030338
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 975,
+          "category": "退货退款政策 / 换货政策",
+          "section_path": "退货退款政策 / 换货政策 / 换货运费",
+          "question": "换货运费",
+          "answer": "非质量问题的换货,往返运费由买家承担;因质量问题或发错货的换货,往返运费由平台承担。",
+          "score": 0.12012881005384286
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 954,
+          "category": "账户与安全",
+          "section_path": "账户与安全 / 账号异常冻结",
+          "question": "账号异常冻结",
+          "answer": "系统检测到异地频繁登录、短时间批量下单等异常行为时，会临时冻结账号以保护资金安全。冻结期间无法下单与使用积分，请联系人工客服完成身份核验，核验通过后即可解冻。",
+          "score": 0.07490527135477446
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 972,
+          "category": "退货退款政策 / 无理由退货",
+          "section_path": "退货退款政策 / 无理由退货 / 适用范围",
+          "question": "适用范围",
+          "answer": "自签收之日起 7 天内,商品完好、不影响二次销售的,支持无理由退货。定制类、生鲜类商品除外。",
+          "score": 0.05686154864494637
+        }
+      ],
+      "expected_points": [
+        "已拆封的猫砂等消耗品",
+        "非质量问题不支持退货",
+        "App 内「我的」-「联系客服」"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "E4",
+      "question": "非质量问题同款换货怎么走流程,几天内可申请,来回运费谁付",
+      "queries": [
+        "非质量问题同款换货怎么走流程",
+        "非质量问题同款换货几天内可申请",
+        "非质量问题同款换货来回运费谁付",
+        "非质量问题同款换货怎么走流程,几天内可申请,来回运费谁付"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 975,
+          "category": "退货退款政策 / 换货政策",
+          "section_path": "退货退款政策 / 换货政策 / 换货运费",
+          "question": "换货运费",
+          "answer": "非质量问题的换货,往返运费由买家承担;因质量问题或发错货的换货,往返运费由平台承担。",
+          "score": 0.9978760335582023
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 976,
+          "category": "退货退款政策",
+          "section_path": "退货退款政策 / 退换货运费承担",
+          "question": "退换货运费承担",
+          "answer": "无理由退货的退回运费由买家承担;因商品质量问题、发错货、少发漏发导致的退换货,运费由平台承担。运费承担以平台售后规则最终判定为准。",
+          "score": 0.9605095953512194
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 974,
+          "category": "退货退款政策 / 换货政策",
+          "section_path": "退货退款政策 / 换货政策 / 换货条件",
+          "question": "换货条件",
+          "answer": "收到商品 7 天内,商品完好且配件齐全的,可申请一次同款换货;不同型号或颜色需先退货再重新下单。",
+          "score": 0.7654180546924173
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 1000,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 换货流程怎么走",
+          "question": "换货流程怎么走",
+          "answer": "收到商品 7 天内可申请换货,联系客服登记后将商品寄回,平台核验无误后补发新品。",
+          "score": 0.6146831657896847
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 977,
+          "category": "退货退款政策",
+          "section_path": "退货退款政策 / 质量问题与保修",
+          "question": "质量问题与保修",
+          "answer": "电子类商品自签收起保修 12 个月,保修期内非人为损坏可申请免费维修或换货;人为损坏、超保商品维修可能收取工本费。",
+          "score": 0.1580443617503406
+        }
+      ],
+      "expected_points": [
+        "7 天内可申请换货",
+        "联系客服登记",
+        "将商品寄回",
+        "平台核验无误后补发新品",
+        "一次同款换货",
+        "非质量问题的换货",
+        "往返运费由买家承担"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "E5",
+      "question": "电子类饮水机非人为故障在保修期内怎么寄修,保修多久",
+      "queries": [
+        "电子类饮水机非人为故障在保修期内怎么寄修？",
+        "电子类饮水机保修多久？",
+        "电子类饮水机非人为故障在保修期内怎么寄修,保修多久"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 977,
+          "category": "退货退款政策",
+          "section_path": "退货退款政策 / 质量问题与保修",
+          "question": "质量问题与保修",
+          "answer": "电子类商品自签收起保修 12 个月,保修期内非人为损坏可申请免费维修或换货;人为损坏、超保商品维修可能收取工本费。",
+          "score": 0.9308364354644565
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 921,
+          "category": "售后手册",
+          "section_path": "售后手册 / 维修寄修流程",
+          "question": "维修寄修流程",
+          "answer": "保修期内设备故障,联系客服登记后按指引将设备寄回指定维修点,核验后免费维修并寄回;超保或人为损坏维修可能收取工本费,费用会提前告知。",
+          "score": 0.9144436500485809
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 917,
+          "category": "售后手册",
+          "section_path": "售后手册 / 保修说明",
+          "question": "保修说明",
+          "answer": "电子类商品保修 12 个月,自签收日起算;人为损坏不在保修范围。",
+          "score": 0.9124361604769414
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 919,
+          "category": "售后手册",
+          "section_path": "售后手册 / 常见故障自查",
+          "question": "常见故障自查",
+          "answer": "- 饮水机不出水:检查水位是否低于最低线、水泵是否卡阻,断电清洗水泵后重试。\n- 猫砂盆报错:清空废砂盒并检查滚筒是否卡砂,重启设备;仍报错联系售后。\n- 喂食器卡粮:检查粮食颗粒直径是否超 12mm、粮桶是否受潮结块,清理出粮口后重试。\n- 摄像头离线:确认 Wi-Fi 为 2.4G 频段、信号良好,重启设备或在 App 内重新配网。",
+          "score": 0.06742377910460126
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 984,
+          "category": "配件与耗材",
+          "section_path": "配件与耗材 / 第三方耗材与保修",
+          "question": "第三方耗材与保修",
+          "answer": "使用非原装耗材不会影响设备的保修资格，但因第三方耗材导致的故障不在免费保修范围内，维修需另行收费。",
+          "score": 0.03656250415974464
+        }
+      ],
+      "expected_points": [
+        "电子类商品保修 12 个月",
+        "人为损坏不在保修范围",
+        "联系客服登记",
+        "指定维修点",
+        "核验后免费维修并寄回"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "E6",
+      "question": "猫砂盆报错怎么先排查,维修问题的客服处理时限是多久",
+      "queries": [
+        "猫砂盆报错怎么先排查",
+        "维修问题的客服处理时限是多久",
+        "猫砂盆报错怎么先排查,维修问题的客服处理时限是多久"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 915,
+          "category": "售后手册",
+          "section_path": "售后手册 / 常见问题处理时限",
+          "question": "常见问题处理时限",
+          "answer": "| 问题类型 | 首次响应 | 处理时限 |\n| --- | --- | --- |\n| 退款 | 2 小时 | 3 个工作日 |\n| 换货 | 2 小时 | 5 个工作日 |\n| 维修 | 4 小时 | 7 个工作日 |\n| 投诉 | 1 小时 | 3 个工作日 |\n| 发票 | 4 小时 | 3 个工作日 |\n| 物流异常 | 2 小时 | 5 个工作日 |\n| 商品咨询 | 1 小时 | 当日 |\n| 价格保护 | 2 小时 | 3 个工作日 |\n| 账户问题 | 2 小时 | 3 个工作日 |\n| 退换货运费 | 2 小时 | 3 个工作日 |\n| 缺货补发 | 2 小时 | 5 个工作日 |\n| 其他 | 4 小时 | 7 个工作日 |",
+          "score": 0.8729984373336678
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 916,
+          "category": "售后手册",
+          "section_path": "售后手册 / 常见问题处理时限",
+          "question": "常见问题处理时限",
+          "answer": "上表记录的是客服首次响应与问题处理时限；其中退款的 3 个工作日是处理时限，不是退款实际到账时间。",
+          "score": 0.8243205491125412
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 919,
+          "category": "售后手册",
+          "section_path": "售后手册 / 常见故障自查",
+          "question": "常见故障自查",
+          "answer": "- 饮水机不出水:检查水位是否低于最低线、水泵是否卡阻,断电清洗水泵后重试。\n- 猫砂盆报错:清空废砂盒并检查滚筒是否卡砂,重启设备;仍报错联系售后。\n- 喂食器卡粮:检查粮食颗粒直径是否超 12mm、粮桶是否受潮结块,清理出粮口后重试。\n- 摄像头离线:确认 Wi-Fi 为 2.4G 频段、信号良好,重启设备或在 App 内重新配网。",
+          "score": 0.7648916107800069
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 932,
+          "category": "设备故障代码",
+          "section_path": "设备故障代码 / 猫砂盆故障代码",
+          "question": "猫砂盆故障代码",
+          "answer": "| 代码 | 含义 | 处理办法 |\n| --- | --- | --- |\n| E1 | 滚筒转动受阻 | 断电后清理滚筒内结块与异物，再重新上电 |\n| E2 | 废砂盒未放到位 | 取出废砂盒重新推入，听到卡扣声即可 |\n| E3 | 称重传感器异常 | 将猫砂盆放在平整地面，在 App 中执行称重校准 |\n| E4 | 电机过载保护 | 断电静置 10 分钟后重启，频繁出现请联系售后 |\n| E5 | Wi-Fi 连接失败 | 检查路由器信号并在 App 中重新配网 |",
+          "score": 0.6158389995128496
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 920,
+          "category": "售后手册",
+          "section_path": "售后手册 / 人工客服入口与时间",
+          "question": "人工客服入口与时间",
+          "answer": "App 内「我的」-「联系客服」可转接在线人工;人工客服服务时间为每日 9:00 至 22:00,高峰期请耐心等待或留言。",
+          "score": 0.04393653355151015
+        }
+      ],
+      "expected_points": [
+        "清空废砂盒",
+        "检查滚筒是否卡砂",
+        "重启设备",
+        "仍报错联系售后",
+        "维修",
+        "7 个工作日"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "E61",
+      "question": "换绑手机号审核要几天，这期间找人工客服在哪联系",
+      "queries": [
+        "换绑手机号审核要几天？",
+        "换绑手机号审核期间人工客服在哪里联系？",
+        "换绑手机号审核要几天，这期间找人工客服在哪联系"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 952,
+          "category": "账户与安全",
+          "section_path": "账户与安全 / 更换绑定手机号",
+          "question": "更换绑定手机号",
+          "answer": "在 App「我的」-「设置」-「账号与安全」中可更换绑定手机号，需先通过原手机号验证码校验。原手机号已停用、无法接收验证码的，可选择「原号码不可用」提交身份核验申请，人工审核需 1 至 3 个工作日，审核通过后短信通知新号码。",
+          "score": 0.9108630617274585
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 920,
+          "category": "售后手册",
+          "section_path": "售后手册 / 人工客服入口与时间",
+          "question": "人工客服入口与时间",
+          "answer": "App 内「我的」-「联系客服」可转接在线人工;人工客服服务时间为每日 9:00 至 22:00,高峰期请耐心等待或留言。",
+          "score": 0.033085978388704126
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 954,
+          "category": "账户与安全",
+          "section_path": "账户与安全 / 账号异常冻结",
+          "question": "账号异常冻结",
+          "answer": "系统检测到异地频繁登录、短时间批量下单等异常行为时，会临时冻结账号以保护资金安全。冻结期间无法下单与使用积分，请联系人工客服完成身份核验，核验通过后即可解冻。",
+          "score": 0.014281933925111154
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 1000,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 换货流程怎么走",
+          "question": "换货流程怎么走",
+          "answer": "收到商品 7 天内可申请换货,联系客服登记后将商品寄回,平台核验无误后补发新品。",
+          "score": 0.005343255956149592
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 915,
+          "category": "售后手册",
+          "section_path": "售后手册 / 常见问题处理时限",
+          "question": "常见问题处理时限",
+          "answer": "| 问题类型 | 首次响应 | 处理时限 |\n| --- | --- | --- |\n| 退款 | 2 小时 | 3 个工作日 |\n| 换货 | 2 小时 | 5 个工作日 |\n| 维修 | 4 小时 | 7 个工作日 |\n| 投诉 | 1 小时 | 3 个工作日 |\n| 发票 | 4 小时 | 3 个工作日 |\n| 物流异常 | 2 小时 | 5 个工作日 |\n| 商品咨询 | 1 小时 | 当日 |\n| 价格保护 | 2 小时 | 3 个工作日 |\n| 账户问题 | 2 小时 | 3 个工作日 |\n| 退换货运费 | 2 小时 | 3 个工作日 |\n| 缺货补发 | 2 小时 | 5 个工作日 |\n| 其他 | 4 小时 | 7 个工作日 |",
+          "score": 0.002969445295374236
+        }
+      ],
+      "expected_points": [
+        "1 至 3 个工作日",
+        "App 内「我的」-「联系客服」"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "E62",
+      "question": "积分多久过期，100 积分能抵多少钱",
+      "queries": [
+        "积分多久过期",
+        "100 积分能抵多少钱",
+        "积分多久过期，100 积分能抵多少钱"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 965,
+          "category": "积分与优惠券细则",
+          "section_path": "积分与优惠券细则 / 积分有效期",
+          "question": "积分有效期",
+          "answer": "积分自获得之日起 12 个月内有效，到期未使用的部分自动清零。积分到期前 30 天，App 会推送到期提醒。",
+          "score": 0.9747251018697572
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 1005,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 会员等级与积分规则",
+          "question": "会员等级与积分规则",
+          "answer": "会员分为普通、银卡、金卡三档,按累计消费自动升级。每消费 1 元得 1 积分,积分可在结算时抵扣,100 积分抵 1 元。",
+          "score": 0.9725714572957163
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 967,
+          "category": "积分与优惠券细则",
+          "section_path": "积分与优惠券细则 / 积分抵扣上限",
+          "question": "积分抵扣上限",
+          "answer": "结算时积分抵扣金额不超过该笔订单实付金额的 50%，剩余部分需通过其他支付方式支付。",
+          "score": 0.9309620718252101
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 968,
+          "category": "积分与优惠券细则",
+          "section_path": "积分与优惠券细则 / 优惠券过期处理",
+          "question": "优惠券过期处理",
+          "answer": "优惠券以券面标注的有效期为准，过期后自动失效，平台不予补发或延期。",
+          "score": 0.14282864911055923
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 966,
+          "category": "积分与优惠券细则",
+          "section_path": "积分与优惠券细则 / 签到获取积分",
+          "question": "签到获取积分",
+          "answer": "在 App 首页每日签到可得 2 积分；连续签到满 7 天，额外奖励 10 积分，中断后重新计算连续天数。",
+          "score": 0.0423245913810851
+        }
+      ],
+      "expected_points": [
+        "12 个月内有效",
+        "100 积分抵 1 元"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "E63",
+      "question": "新人券有效期多久，能跟满减活动一起用吗",
+      "queries": [
+        "新人券有效期多久？",
+        "新人券能跟满减活动一起用吗？",
+        "新人券有效期多久，能跟满减活动一起用吗"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 1006,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 优惠券和满减怎么用",
+          "question": "优惠券和满减怎么用",
+          "answer": "优惠券在结算页「使用优惠券」中勾选,满减活动自动叠加在商品页标示的门槛上;同一订单一般限用一张店铺券,活动细则以页面为准。",
+          "score": 0.9846346585586978
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 971,
+          "category": "积分与优惠券细则",
+          "section_path": "积分与优惠券细则 / 新人专享券",
+          "question": "新人专享券",
+          "answer": "新注册用户可领取 30 元新人券包，自领取起 7 天内有效，仅限首笔订单使用，不与其他平台券同时使用。",
+          "score": 0.9648551535992067
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 970,
+          "category": "积分与优惠券细则",
+          "section_path": "积分与优惠券细则 / 平台券与店铺券叠加",
+          "question": "平台券与店铺券叠加",
+          "answer": "平台通用券可与店铺券在同一订单中叠加使用，结算时先抵扣店铺券、再抵扣平台券。两张平台券之间不可叠加。",
+          "score": 0.4906703334867328
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 965,
+          "category": "积分与优惠券细则",
+          "section_path": "积分与优惠券细则 / 积分有效期",
+          "question": "积分有效期",
+          "answer": "积分自获得之日起 12 个月内有效，到期未使用的部分自动清零。积分到期前 30 天，App 会推送到期提醒。",
+          "score": 0.40851270523926625
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 968,
+          "category": "积分与优惠券细则",
+          "section_path": "积分与优惠券细则 / 优惠券过期处理",
+          "question": "优惠券过期处理",
+          "answer": "优惠券以券面标注的有效期为准，过期后自动失效，平台不予补发或延期。",
+          "score": 0.14681969604457246
+        }
+      ],
+      "expected_points": [
+        "自领取起 7 天内有效",
+        "满减活动自动叠加"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "E64",
+      "question": "积分最多抵多少，平台券和店铺券能叠加吗",
+      "queries": [
+        "积分最多抵多少？",
+        "平台券和店铺券能叠加吗？",
+        "积分最多抵多少，平台券和店铺券能叠加吗"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 970,
+          "category": "积分与优惠券细则",
+          "section_path": "积分与优惠券细则 / 平台券与店铺券叠加",
+          "question": "平台券与店铺券叠加",
+          "answer": "平台通用券可与店铺券在同一订单中叠加使用，结算时先抵扣店铺券、再抵扣平台券。两张平台券之间不可叠加。",
+          "score": 0.999547024187722
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 967,
+          "category": "积分与优惠券细则",
+          "section_path": "积分与优惠券细则 / 积分抵扣上限",
+          "question": "积分抵扣上限",
+          "answer": "结算时积分抵扣金额不超过该笔订单实付金额的 50%，剩余部分需通过其他支付方式支付。",
+          "score": 0.9851003567309808
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 1006,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 优惠券和满减怎么用",
+          "question": "优惠券和满减怎么用",
+          "answer": "优惠券在结算页「使用优惠券」中勾选,满减活动自动叠加在商品页标示的门槛上;同一订单一般限用一张店铺券,活动细则以页面为准。",
+          "score": 0.8820219914046175
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 971,
+          "category": "积分与优惠券细则",
+          "section_path": "积分与优惠券细则 / 新人专享券",
+          "question": "新人专享券",
+          "answer": "新注册用户可领取 30 元新人券包，自领取起 7 天内有效，仅限首笔订单使用，不与其他平台券同时使用。",
+          "score": 0.7611836278339746
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 1005,
+          "category": "商品与购物 FAQ",
+          "section_path": "商品与购物 FAQ / 会员等级与积分规则",
+          "question": "会员等级与积分规则",
+          "answer": "会员分为普通、银卡、金卡三档,按累计消费自动升级。每消费 1 元得 1 积分,积分可在结算时抵扣,100 积分抵 1 元。",
+          "score": 0.6433292938858967
+        }
+      ],
+      "expected_points": [
+        "实付金额的 50%",
+        "可与店铺券在同一订单中叠加使用"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "E65",
+      "question": "整单退款后优惠券怎么处理，退款多久能到账",
+      "queries": [
+        "整单退款后优惠券怎么处理？",
+        "退款多久能到账？",
+        "整单退款后优惠券怎么处理，退款多久能到账"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 969,
+          "category": "积分与优惠券细则",
+          "section_path": "积分与优惠券细则 / 退款后优惠券退回",
+          "question": "退款后优惠券退回",
+          "answer": "订单整单退款且优惠券仍在有效期内的，优惠券退回原账户；已过期的优惠券不再退回。部分退款时不退回优惠券，优惠金额按商品金额比例分摊后扣减退款。",
+          "score": 0.9898695883364156
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 916,
+          "category": "售后手册",
+          "section_path": "售后手册 / 常见问题处理时限",
+          "question": "常见问题处理时限",
+          "answer": "上表记录的是客服首次响应与问题处理时限；其中退款的 3 个工作日是处理时限，不是退款实际到账时间。",
+          "score": 0.9193533851235517
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 973,
+          "category": "退货退款政策 / 无理由退货",
+          "section_path": "退货退款政策 / 无理由退货 / 退款时效",
+          "question": "退款时效",
+          "answer": "退货商品经平台核验通过后,退款原路退回,到账时效以平台售后规则为准。售后手册中的退款 3 个工作日指问题处理时限,不承诺 3 个工作日到账。",
+          "score": 0.9015745876334377
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 959,
+          "category": "发票补充规则",
+          "section_path": "发票补充规则 / 退货后的发票处理",
+          "question": "退货后的发票处理",
+          "answer": "已开票订单发生整单退货的，原发票由系统自动红冲作废，无需买家寄回；部分退货的，原发票红冲后按实际保留商品金额重新开具。",
+          "score": 0.6515766011172324
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 968,
+          "category": "积分与优惠券细则",
+          "section_path": "积分与优惠券细则 / 优惠券过期处理",
+          "question": "优惠券过期处理",
+          "answer": "优惠券以券面标注的有效期为准，过期后自动失效，平台不予补发或延期。",
+          "score": 0.4487584132832497
+        }
+      ],
+      "expected_points": [
+        "优惠券退回原账户",
+        "到账时效以平台售后规则为准"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "E66",
+      "question": "显示签收但没收到要多久内反馈，物流异常一般几天处理完",
+      "queries": [
+        "显示签收但没收到要多久内反馈",
+        "物流异常一般几天处理完",
+        "显示签收但没收到要多久内反馈，物流异常一般几天处理完"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 960,
+          "category": "物流异常处理",
+          "section_path": "物流异常处理 / 显示签收但未收到",
+          "question": "显示签收但未收到",
+          "answer": "物流显示已签收但本人未收到包裹的，请在显示签收后 24 小时内联系客服。平台将联系承运方核查签收记录，确认未妥投的，安排补发或退款。",
+          "score": 0.9979088937475938
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 962,
+          "category": "物流异常处理",
+          "section_path": "物流异常处理 / 拒收后的退款",
+          "question": "拒收后的退款",
+          "answer": "拒收的包裹退回并完成入库核验后，平台在 2 个工作日内发起退款，款项按原支付方式退回。",
+          "score": 0.6581978338852327
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 963,
+          "category": "物流异常处理",
+          "section_path": "物流异常处理 / 驿站与快递柜取件",
+          "question": "驿站与快递柜取件",
+          "answer": "包裹被放入驿站或快递柜的，凭短信中的取件码领取。超过 3 天未取件的包裹可能被退回，退回后按拒收流程处理。",
+          "score": 0.528715923598648
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 961,
+          "category": "物流异常处理",
+          "section_path": "物流异常处理 / 物流长时间未更新",
+          "question": "物流长时间未更新",
+          "answer": "物流轨迹超过 72 小时没有更新的，可联系客服发起催查。经承运方确认包裹丢失的，平台为您补发或全额退款，无需等待理赔结果。",
+          "score": 0.40433102946651583
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 915,
+          "category": "售后手册",
+          "section_path": "售后手册 / 常见问题处理时限",
+          "question": "常见问题处理时限",
+          "answer": "| 问题类型 | 首次响应 | 处理时限 |\n| --- | --- | --- |\n| 退款 | 2 小时 | 3 个工作日 |\n| 换货 | 2 小时 | 5 个工作日 |\n| 维修 | 4 小时 | 7 个工作日 |\n| 投诉 | 1 小时 | 3 个工作日 |\n| 发票 | 4 小时 | 3 个工作日 |\n| 物流异常 | 2 小时 | 5 个工作日 |\n| 商品咨询 | 1 小时 | 当日 |\n| 价格保护 | 2 小时 | 3 个工作日 |\n| 账户问题 | 2 小时 | 3 个工作日 |\n| 退换货运费 | 2 小时 | 3 个工作日 |\n| 缺货补发 | 2 小时 | 5 个工作日 |\n| 其他 | 4 小时 | 7 个工作日 |",
+          "score": 0.3524246224815365
+        }
+      ],
+      "expected_points": [
+        "24 小时内联系客服",
+        "物流异常",
+        "5 个工作日"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "F1",
+      "question": "猫砂盆屏幕上显示 E1 是什么问题",
+      "queries": [
+        "猫砂盆屏幕上显示 E1 是什么问题"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 932,
+          "category": "设备故障代码",
+          "section_path": "设备故障代码 / 猫砂盆故障代码",
+          "question": "猫砂盆故障代码",
+          "answer": "| 代码 | 含义 | 处理办法 |\n| --- | --- | --- |\n| E1 | 滚筒转动受阻 | 断电后清理滚筒内结块与异物，再重新上电 |\n| E2 | 废砂盒未放到位 | 取出废砂盒重新推入，听到卡扣声即可 |\n| E3 | 称重传感器异常 | 将猫砂盆放在平整地面，在 App 中执行称重校准 |\n| E4 | 电机过载保护 | 断电静置 10 分钟后重启，频繁出现请联系售后 |\n| E5 | Wi-Fi 连接失败 | 检查路由器信号并在 App 中重新配网 |",
+          "score": 0.9722571081173828
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 919,
+          "category": "售后手册",
+          "section_path": "售后手册 / 常见故障自查",
+          "question": "常见故障自查",
+          "answer": "- 饮水机不出水:检查水位是否低于最低线、水泵是否卡阻,断电清洗水泵后重试。\n- 猫砂盆报错:清空废砂盒并检查滚筒是否卡砂,重启设备;仍报错联系售后。\n- 喂食器卡粮:检查粮食颗粒直径是否超 12mm、粮桶是否受潮结块,清理出粮口后重试。\n- 摄像头离线:确认 Wi-Fi 为 2.4G 频段、信号良好,重启设备或在 App 内重新配网。",
+          "score": 0.40063210451873416
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 933,
+          "category": "设备故障代码",
+          "section_path": "设备故障代码 / 喂食器故障代码",
+          "question": "喂食器故障代码",
+          "answer": "| 代码 | 含义 | 处理办法 |\n| --- | --- | --- |\n| F1 | 出粮口堵塞 | 断电后清理出粮口与出粮转盘 |\n| F2 | 粮桶余粮不足 | 及时向粮桶添加猫粮 |\n| F3 | 备用电池电量低 | 更换备用电池或保持市电供电 |",
+          "score": 0.022328782910109677
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 921,
+          "category": "售后手册",
+          "section_path": "售后手册 / 维修寄修流程",
+          "question": "维修寄修流程",
+          "answer": "保修期内设备故障,联系客服登记后按指引将设备寄回指定维修点,核验后免费维修并寄回;超保或人为损坏维修可能收取工本费,费用会提前告知。",
+          "score": 0.01757688326733593
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 949,
+          "category": "MH-LP 系列智能猫砂盆使用与保养",
+          "section_path": "MH-LP 系列智能猫砂盆使用与保养 / 幼猫使用建议",
+          "question": "幼猫使用建议",
+          "answer": "体重不足 1.5kg 的幼猫可能无法被重量感应识别，存在自动清理时猫在盆内的风险，建议切换为手动清理模式，待体重达标后再开启自动清理。",
+          "score": 0.014337030424010801
+        }
+      ],
+      "expected_points": [
+        "滚筒转动受阻",
+        "清理滚筒内结块与异物"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "F2",
+      "question": "猫砂盆报 E2 该怎么处理",
+      "queries": [
+        "猫砂盆报 E2 该怎么处理"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 932,
+          "category": "设备故障代码",
+          "section_path": "设备故障代码 / 猫砂盆故障代码",
+          "question": "猫砂盆故障代码",
+          "answer": "| 代码 | 含义 | 处理办法 |\n| --- | --- | --- |\n| E1 | 滚筒转动受阻 | 断电后清理滚筒内结块与异物，再重新上电 |\n| E2 | 废砂盒未放到位 | 取出废砂盒重新推入，听到卡扣声即可 |\n| E3 | 称重传感器异常 | 将猫砂盆放在平整地面，在 App 中执行称重校准 |\n| E4 | 电机过载保护 | 断电静置 10 分钟后重启，频繁出现请联系售后 |\n| E5 | Wi-Fi 连接失败 | 检查路由器信号并在 App 中重新配网 |",
+          "score": 0.9774570340514706
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 919,
+          "category": "售后手册",
+          "section_path": "售后手册 / 常见故障自查",
+          "question": "常见故障自查",
+          "answer": "- 饮水机不出水:检查水位是否低于最低线、水泵是否卡阻,断电清洗水泵后重试。\n- 猫砂盆报错:清空废砂盒并检查滚筒是否卡砂,重启设备;仍报错联系售后。\n- 喂食器卡粮:检查粮食颗粒直径是否超 12mm、粮桶是否受潮结块,清理出粮口后重试。\n- 摄像头离线:确认 Wi-Fi 为 2.4G 频段、信号良好,重启设备或在 App 内重新配网。",
+          "score": 0.34477428026383394
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 933,
+          "category": "设备故障代码",
+          "section_path": "设备故障代码 / 喂食器故障代码",
+          "question": "喂食器故障代码",
+          "answer": "| 代码 | 含义 | 处理办法 |\n| --- | --- | --- |\n| F1 | 出粮口堵塞 | 断电后清理出粮口与出粮转盘 |\n| F2 | 粮桶余粮不足 | 及时向粮桶添加猫粮 |\n| F3 | 备用电池电量低 | 更换备用电池或保持市电供电 |",
+          "score": 0.08093670978361556
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 951,
+          "category": "MH-LP 系列智能猫砂盆使用与保养",
+          "section_path": "MH-LP 系列智能猫砂盆使用与保养 / 滚筒深度清洗",
+          "question": "滚筒深度清洗",
+          "answer": "建议每月对滚筒深度清洗一次：先断电并倒空猫砂，取下滚筒用清水和中性清洁剂冲洗，完全晾干后再装回。不可使用含氯消毒剂，以免腐蚀内壁和损坏传感器。",
+          "score": 0.05127241813029473
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 948,
+          "category": "MH-LP 系列智能猫砂盆使用与保养",
+          "section_path": "MH-LP 系列智能猫砂盆使用与保养 / 新猫适应期",
+          "question": "新猫适应期",
+          "answer": "猫咪初次接触自动猫砂盆时，建议先关闭自动清理 3 至 5 天，并在新砂中混入少量原来用过的猫砂，帮助猫咪熟悉气味；确认猫咪正常如厕后再开启自动模式。",
+          "score": 0.030214587067393973
+        }
+      ],
+      "expected_points": [
+        "废砂盒未放到位",
+        "取出废砂盒重新推入"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "F3",
+      "question": "猫砂盆出现 E3 代码",
+      "queries": [
+        "猫砂盆出现 E3 代码"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 932,
+          "category": "设备故障代码",
+          "section_path": "设备故障代码 / 猫砂盆故障代码",
+          "question": "猫砂盆故障代码",
+          "answer": "| 代码 | 含义 | 处理办法 |\n| --- | --- | --- |\n| E1 | 滚筒转动受阻 | 断电后清理滚筒内结块与异物，再重新上电 |\n| E2 | 废砂盒未放到位 | 取出废砂盒重新推入，听到卡扣声即可 |\n| E3 | 称重传感器异常 | 将猫砂盆放在平整地面，在 App 中执行称重校准 |\n| E4 | 电机过载保护 | 断电静置 10 分钟后重启，频繁出现请联系售后 |\n| E5 | Wi-Fi 连接失败 | 检查路由器信号并在 App 中重新配网 |",
+          "score": 0.964254189725945
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 919,
+          "category": "售后手册",
+          "section_path": "售后手册 / 常见故障自查",
+          "question": "常见故障自查",
+          "answer": "- 饮水机不出水:检查水位是否低于最低线、水泵是否卡阻,断电清洗水泵后重试。\n- 猫砂盆报错:清空废砂盒并检查滚筒是否卡砂,重启设备;仍报错联系售后。\n- 喂食器卡粮:检查粮食颗粒直径是否超 12mm、粮桶是否受潮结块,清理出粮口后重试。\n- 摄像头离线:确认 Wi-Fi 为 2.4G 频段、信号良好,重启设备或在 App 内重新配网。",
+          "score": 0.4446853420655112
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 933,
+          "category": "设备故障代码",
+          "section_path": "设备故障代码 / 喂食器故障代码",
+          "question": "喂食器故障代码",
+          "answer": "| 代码 | 含义 | 处理办法 |\n| --- | --- | --- |\n| F1 | 出粮口堵塞 | 断电后清理出粮口与出粮转盘 |\n| F2 | 粮桶余粮不足 | 及时向粮桶添加猫粮 |\n| F3 | 备用电池电量低 | 更换备用电池或保持市电供电 |",
+          "score": 0.03554439752641486
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 951,
+          "category": "MH-LP 系列智能猫砂盆使用与保养",
+          "section_path": "MH-LP 系列智能猫砂盆使用与保养 / 滚筒深度清洗",
+          "question": "滚筒深度清洗",
+          "answer": "建议每月对滚筒深度清洗一次：先断电并倒空猫砂，取下滚筒用清水和中性清洁剂冲洗，完全晾干后再装回。不可使用含氯消毒剂，以免腐蚀内壁和损坏传感器。",
+          "score": 0.018299332210213487
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 949,
+          "category": "MH-LP 系列智能猫砂盆使用与保养",
+          "section_path": "MH-LP 系列智能猫砂盆使用与保养 / 幼猫使用建议",
+          "question": "幼猫使用建议",
+          "answer": "体重不足 1.5kg 的幼猫可能无法被重量感应识别，存在自动清理时猫在盆内的风险，建议切换为手动清理模式，待体重达标后再开启自动清理。",
+          "score": 0.009670992763446974
+        }
+      ],
+      "expected_points": [
+        "称重传感器异常",
+        "执行称重校准"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "F4",
+      "question": "猫砂盆提示 E4 怎么办",
+      "queries": [
+        "猫砂盆提示 E4 怎么办"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 932,
+          "category": "设备故障代码",
+          "section_path": "设备故障代码 / 猫砂盆故障代码",
+          "question": "猫砂盆故障代码",
+          "answer": "| 代码 | 含义 | 处理办法 |\n| --- | --- | --- |\n| E1 | 滚筒转动受阻 | 断电后清理滚筒内结块与异物，再重新上电 |\n| E2 | 废砂盒未放到位 | 取出废砂盒重新推入，听到卡扣声即可 |\n| E3 | 称重传感器异常 | 将猫砂盆放在平整地面，在 App 中执行称重校准 |\n| E4 | 电机过载保护 | 断电静置 10 分钟后重启，频繁出现请联系售后 |\n| E5 | Wi-Fi 连接失败 | 检查路由器信号并在 App 中重新配网 |",
+          "score": 0.976535343307368
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 919,
+          "category": "售后手册",
+          "section_path": "售后手册 / 常见故障自查",
+          "question": "常见故障自查",
+          "answer": "- 饮水机不出水:检查水位是否低于最低线、水泵是否卡阻,断电清洗水泵后重试。\n- 猫砂盆报错:清空废砂盒并检查滚筒是否卡砂,重启设备;仍报错联系售后。\n- 喂食器卡粮:检查粮食颗粒直径是否超 12mm、粮桶是否受潮结块,清理出粮口后重试。\n- 摄像头离线:确认 Wi-Fi 为 2.4G 频段、信号良好,重启设备或在 App 内重新配网。",
+          "score": 0.4526266551252466
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 933,
+          "category": "设备故障代码",
+          "section_path": "设备故障代码 / 喂食器故障代码",
+          "question": "喂食器故障代码",
+          "answer": "| 代码 | 含义 | 处理办法 |\n| --- | --- | --- |\n| F1 | 出粮口堵塞 | 断电后清理出粮口与出粮转盘 |\n| F2 | 粮桶余粮不足 | 及时向粮桶添加猫粮 |\n| F3 | 备用电池电量低 | 更换备用电池或保持市电供电 |",
+          "score": 0.11536140159594613
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 951,
+          "category": "MH-LP 系列智能猫砂盆使用与保养",
+          "section_path": "MH-LP 系列智能猫砂盆使用与保养 / 滚筒深度清洗",
+          "question": "滚筒深度清洗",
+          "answer": "建议每月对滚筒深度清洗一次：先断电并倒空猫砂，取下滚筒用清水和中性清洁剂冲洗，完全晾干后再装回。不可使用含氯消毒剂，以免腐蚀内壁和损坏传感器。",
+          "score": 0.08449275397500926
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 949,
+          "category": "MH-LP 系列智能猫砂盆使用与保养",
+          "section_path": "MH-LP 系列智能猫砂盆使用与保养 / 幼猫使用建议",
+          "question": "幼猫使用建议",
+          "answer": "体重不足 1.5kg 的幼猫可能无法被重量感应识别，存在自动清理时猫在盆内的风险，建议切换为手动清理模式，待体重达标后再开启自动清理。",
+          "score": 0.03949040464878066
+        }
+      ],
+      "expected_points": [
+        "电机过载保护",
+        "断电静置 10 分钟后重启"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "F5",
+      "question": "猫砂盆 E5 是什么意思",
+      "queries": [
+        "猫砂盆 E5 是什么意思"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 932,
+          "category": "设备故障代码",
+          "section_path": "设备故障代码 / 猫砂盆故障代码",
+          "question": "猫砂盆故障代码",
+          "answer": "| 代码 | 含义 | 处理办法 |\n| --- | --- | --- |\n| E1 | 滚筒转动受阻 | 断电后清理滚筒内结块与异物，再重新上电 |\n| E2 | 废砂盒未放到位 | 取出废砂盒重新推入，听到卡扣声即可 |\n| E3 | 称重传感器异常 | 将猫砂盆放在平整地面，在 App 中执行称重校准 |\n| E4 | 电机过载保护 | 断电静置 10 分钟后重启，频繁出现请联系售后 |\n| E5 | Wi-Fi 连接失败 | 检查路由器信号并在 App 中重新配网 |",
+          "score": 0.7594038767986158
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 982,
+          "category": "配件与耗材",
+          "section_path": "配件与耗材 / 猫砂盆耗材型号",
+          "question": "猫砂盆耗材型号",
+          "answer": "MH-LP100 与 MH-LP50 使用 DC-1 除臭包，MH-LP200 使用 DC-2 大容量除臭包；BG-50 垃圾袋三款猫砂盆通用。",
+          "score": 0.033273941086340214
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 947,
+          "category": "MH-LP 系列智能猫砂盆使用与保养",
+          "section_path": "MH-LP 系列智能猫砂盆使用与保养 / 猫砂类型选择",
+          "question": "猫砂类型选择",
+          "answer": "推荐使用膨润土砂或混合砂，颗粒直径以 1 至 4mm 为宜。水晶砂和大颗粒松木砂容易卡住滚筒或无法结团，不建议使用。",
+          "score": 0.00902027950140217
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 988,
+          "category": "商品规格手册",
+          "section_path": "商品规格手册 / 智能猫砂盆 Max(型号 MH-LP200)",
+          "question": "智能猫砂盆 Max(型号 MH-LP200)",
+          "answer": "- 型号:MH-LP200\n- 适用猫咪体重:2kg 至 12kg,适合大型猫与多猫家庭\n- 猫砂容量:12L,废砂盒容量约 10 天(单猫)\n- 核心功能:超大滚筒、双重称重防夹、活性炭除臭、App 多猫健康档案\n- 供电:220V 市电\n- 清理提示:多猫家庭建议每 3 至 5 天倾倒一次废砂盒",
+          "score": 0.0062170781422503756
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 987,
+          "category": "商品规格手册",
+          "section_path": "商品规格手册 / 智能猫砂盆 Lite(型号 MH-LP50)",
+          "question": "智能猫砂盆 Lite(型号 MH-LP50)",
+          "answer": "- 型号:MH-LP50\n- 适用猫咪体重:1.5kg 至 6kg\n- 猫砂容量:6L\n- 核心功能:自动感应清理、物理除臭盖板;不含 App 联网功能\n- 与 Pro 差异:Lite 无 App 远程监控与健康记录,价格更低,适合单猫家庭",
+          "score": 0.004755199909833047
+        }
+      ],
+      "expected_points": [
+        "Wi-Fi 连接失败",
+        "在 App 中重新配网"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "F6",
+      "question": "喂食器报 F1",
+      "queries": [
+        "喂食器报 F1"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 933,
+          "category": "设备故障代码",
+          "section_path": "设备故障代码 / 喂食器故障代码",
+          "question": "喂食器故障代码",
+          "answer": "| 代码 | 含义 | 处理办法 |\n| --- | --- | --- |\n| F1 | 出粮口堵塞 | 断电后清理出粮口与出粮转盘 |\n| F2 | 粮桶余粮不足 | 及时向粮桶添加猫粮 |\n| F3 | 备用电池电量低 | 更换备用电池或保持市电供电 |",
+          "score": 0.9478657435317039
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 919,
+          "category": "售后手册",
+          "section_path": "售后手册 / 常见故障自查",
+          "question": "常见故障自查",
+          "answer": "- 饮水机不出水:检查水位是否低于最低线、水泵是否卡阻,断电清洗水泵后重试。\n- 猫砂盆报错:清空废砂盒并检查滚筒是否卡砂,重启设备;仍报错联系售后。\n- 喂食器卡粮:检查粮食颗粒直径是否超 12mm、粮桶是否受潮结块,清理出粮口后重试。\n- 摄像头离线:确认 Wi-Fi 为 2.4G 频段、信号良好,重启设备或在 App 内重新配网。",
+          "score": 0.1965176254279632
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 932,
+          "category": "设备故障代码",
+          "section_path": "设备故障代码 / 猫砂盆故障代码",
+          "question": "猫砂盆故障代码",
+          "answer": "| 代码 | 含义 | 处理办法 |\n| --- | --- | --- |\n| E1 | 滚筒转动受阻 | 断电后清理滚筒内结块与异物，再重新上电 |\n| E2 | 废砂盒未放到位 | 取出废砂盒重新推入，听到卡扣声即可 |\n| E3 | 称重传感器异常 | 将猫砂盆放在平整地面，在 App 中执行称重校准 |\n| E4 | 电机过载保护 | 断电静置 10 分钟后重启，频繁出现请联系售后 |\n| E5 | Wi-Fi 连接失败 | 检查路由器信号并在 App 中重新配网 |",
+          "score": 0.017509557349574698
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 921,
+          "category": "售后手册",
+          "section_path": "售后手册 / 维修寄修流程",
+          "question": "维修寄修流程",
+          "answer": "保修期内设备故障,联系客服登记后按指引将设备寄回指定维修点,核验后免费维修并寄回;超保或人为损坏维修可能收取工本费,费用会提前告知。",
+          "score": 0.0024534282596974846
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 995,
+          "category": "商品规格手册",
+          "section_path": "商品规格手册 / 自动喂食器 基础版(型号 MH-FD10)",
+          "question": "自动喂食器 基础版(型号 MH-FD10)",
+          "answer": "- 型号:MH-FD10\n- 粮桶容量:4L\n- 核心功能:定时定量投喂,每日最多 6 餐,语音呼唤进食\n- 供电:市电供电 + 4 节 5 号电池断电应急\n- 说明:基础版不含摄像头与 App 远程投喂",
+          "score": 0.0017409836647228373
+        }
+      ],
+      "expected_points": [
+        "出粮口堵塞",
+        "清理出粮口与出粮转盘"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "F7",
+      "question": "喂食器显示 F3 怎么处理",
+      "queries": [
+        "喂食器显示 F3 怎么处理"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 933,
+          "category": "设备故障代码",
+          "section_path": "设备故障代码 / 喂食器故障代码",
+          "question": "喂食器故障代码",
+          "answer": "| 代码 | 含义 | 处理办法 |\n| --- | --- | --- |\n| F1 | 出粮口堵塞 | 断电后清理出粮口与出粮转盘 |\n| F2 | 粮桶余粮不足 | 及时向粮桶添加猫粮 |\n| F3 | 备用电池电量低 | 更换备用电池或保持市电供电 |",
+          "score": 0.8670357598021706
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 919,
+          "category": "售后手册",
+          "section_path": "售后手册 / 常见故障自查",
+          "question": "常见故障自查",
+          "answer": "- 饮水机不出水:检查水位是否低于最低线、水泵是否卡阻,断电清洗水泵后重试。\n- 猫砂盆报错:清空废砂盒并检查滚筒是否卡砂,重启设备;仍报错联系售后。\n- 喂食器卡粮:检查粮食颗粒直径是否超 12mm、粮桶是否受潮结块,清理出粮口后重试。\n- 摄像头离线:确认 Wi-Fi 为 2.4G 频段、信号良好,重启设备或在 App 内重新配网。",
+          "score": 0.2191703353550801
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 932,
+          "category": "设备故障代码",
+          "section_path": "设备故障代码 / 猫砂盆故障代码",
+          "question": "猫砂盆故障代码",
+          "answer": "| 代码 | 含义 | 处理办法 |\n| --- | --- | --- |\n| E1 | 滚筒转动受阻 | 断电后清理滚筒内结块与异物，再重新上电 |\n| E2 | 废砂盒未放到位 | 取出废砂盒重新推入，听到卡扣声即可 |\n| E3 | 称重传感器异常 | 将猫砂盆放在平整地面，在 App 中执行称重校准 |\n| E4 | 电机过载保护 | 断电静置 10 分钟后重启，频繁出现请联系售后 |\n| E5 | Wi-Fi 连接失败 | 检查路由器信号并在 App 中重新配网 |",
+          "score": 0.022328782910109677
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 921,
+          "category": "售后手册",
+          "section_path": "售后手册 / 维修寄修流程",
+          "question": "维修寄修流程",
+          "answer": "保修期内设备故障,联系客服登记后按指引将设备寄回指定维修点,核验后免费维修并寄回;超保或人为损坏维修可能收取工本费,费用会提前告知。",
+          "score": 0.005511934210807019
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 929,
+          "category": "看护摄像头使用指南（MH-CAM1 及带摄像头的喂食器）",
+          "section_path": "看护摄像头使用指南（MH-CAM1 及带摄像头的喂食器） / 隐私模式",
+          "question": "隐私模式",
+          "answer": "在 App 设备页开启「隐私模式」后，镜头转向机身内侧并暂停录像与侦测；关闭后自动恢复原有视角。也可设置每日自动开启隐私模式的时段。",
+          "score": 0.00455611371445455
+        }
+      ],
+      "expected_points": [
+        "备用电池电量低",
+        "更换备用电池或保持市电供电"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "F8",
+      "question": "饮水机红灯一直亮着",
+      "queries": [
+        "饮水机红灯一直亮着"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 934,
+          "category": "设备故障代码",
+          "section_path": "设备故障代码 / 饮水机指示灯",
+          "question": "饮水机指示灯",
+          "answer": "| 指示灯 | 含义 | 处理办法 |\n| --- | --- | --- |\n| 红灯常亮 | 水箱缺水 | 加水至最高水位线 |\n| 红灯闪烁 | 水泵故障 | 断电清洗水泵，仍闪烁请联系售后 |\n| 绿灯闪烁 | 滤芯到期提醒 | 更换滤芯后长按电源键 3 秒复位 |",
+          "score": 0.7610060599864007
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 919,
+          "category": "售后手册",
+          "section_path": "售后手册 / 常见故障自查",
+          "question": "常见故障自查",
+          "answer": "- 饮水机不出水:检查水位是否低于最低线、水泵是否卡阻,断电清洗水泵后重试。\n- 猫砂盆报错:清空废砂盒并检查滚筒是否卡砂,重启设备;仍报错联系售后。\n- 喂食器卡粮:检查粮食颗粒直径是否超 12mm、粮桶是否受潮结块,清理出粮口后重试。\n- 摄像头离线:确认 Wi-Fi 为 2.4G 频段、信号良好,重启设备或在 App 内重新配网。",
+          "score": 0.196055443578037
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 921,
+          "category": "售后手册",
+          "section_path": "售后手册 / 维修寄修流程",
+          "question": "维修寄修流程",
+          "answer": "保修期内设备故障,联系客服登记后按指引将设备寄回指定维修点,核验后免费维修并寄回;超保或人为损坏维修可能收取工本费,费用会提前告知。",
+          "score": 0.04840595740372121
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 940,
+          "category": "MH-W 系列饮水机保养指南",
+          "section_path": "MH-W 系列饮水机保养指南 / 水泵噪音处理",
+          "question": "水泵噪音处理",
+          "answer": "水泵噪音变大，多数是水位低于最低线导致吸入空气，或叶轮缠绕了猫毛。先加水至最高水位线；若仍有异响，断电拆下水泵，取出叶轮清除缠绕的毛发后装回。",
+          "score": 0.03875619358719477
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 941,
+          "category": "MH-W 系列饮水机保养指南",
+          "section_path": "MH-W 系列饮水机保养指南 / 新滤芯首次使用",
+          "question": "新滤芯首次使用",
+          "answer": "新滤芯拆封后，先用清水浸泡 5 分钟并轻轻挤压排出内部气泡，再装入饮水机，可避免初期出水带黑色炭粉。",
+          "score": 0.02017731832286999
+        }
+      ],
+      "expected_points": [
+        "水箱缺水",
+        "加水至最高水位线"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "F9",
+      "question": "饮水机红灯一闪一闪",
+      "queries": [
+        "饮水机红灯一闪一闪"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 934,
+          "category": "设备故障代码",
+          "section_path": "设备故障代码 / 饮水机指示灯",
+          "question": "饮水机指示灯",
+          "answer": "| 指示灯 | 含义 | 处理办法 |\n| --- | --- | --- |\n| 红灯常亮 | 水箱缺水 | 加水至最高水位线 |\n| 红灯闪烁 | 水泵故障 | 断电清洗水泵，仍闪烁请联系售后 |\n| 绿灯闪烁 | 滤芯到期提醒 | 更换滤芯后长按电源键 3 秒复位 |",
+          "score": 0.7289413014988066
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 919,
+          "category": "售后手册",
+          "section_path": "售后手册 / 常见故障自查",
+          "question": "常见故障自查",
+          "answer": "- 饮水机不出水:检查水位是否低于最低线、水泵是否卡阻,断电清洗水泵后重试。\n- 猫砂盆报错:清空废砂盒并检查滚筒是否卡砂,重启设备;仍报错联系售后。\n- 喂食器卡粮:检查粮食颗粒直径是否超 12mm、粮桶是否受潮结块,清理出粮口后重试。\n- 摄像头离线:确认 Wi-Fi 为 2.4G 频段、信号良好,重启设备或在 App 内重新配网。",
+          "score": 0.18359362263419612
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 940,
+          "category": "MH-W 系列饮水机保养指南",
+          "section_path": "MH-W 系列饮水机保养指南 / 水泵噪音处理",
+          "question": "水泵噪音处理",
+          "answer": "水泵噪音变大，多数是水位低于最低线导致吸入空气，或叶轮缠绕了猫毛。先加水至最高水位线；若仍有异响，断电拆下水泵，取出叶轮清除缠绕的毛发后装回。",
+          "score": 0.0886623504473337
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 921,
+          "category": "售后手册",
+          "section_path": "售后手册 / 维修寄修流程",
+          "question": "维修寄修流程",
+          "answer": "保修期内设备故障,联系客服登记后按指引将设备寄回指定维修点,核验后免费维修并寄回;超保或人为损坏维修可能收取工本费,费用会提前告知。",
+          "score": 0.04256272864849986
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 941,
+          "category": "MH-W 系列饮水机保养指南",
+          "section_path": "MH-W 系列饮水机保养指南 / 新滤芯首次使用",
+          "question": "新滤芯首次使用",
+          "answer": "新滤芯拆封后，先用清水浸泡 5 分钟并轻轻挤压排出内部气泡，再装入饮水机，可避免初期出水带黑色炭粉。",
+          "score": 0.028761587264997814
+        }
+      ],
+      "expected_points": [
+        "水泵故障",
+        "断电清洗水泵"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "F10",
+      "question": "饮水机绿灯在闪",
+      "queries": [
+        "饮水机绿灯在闪"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 934,
+          "category": "设备故障代码",
+          "section_path": "设备故障代码 / 饮水机指示灯",
+          "question": "饮水机指示灯",
+          "answer": "| 指示灯 | 含义 | 处理办法 |\n| --- | --- | --- |\n| 红灯常亮 | 水箱缺水 | 加水至最高水位线 |\n| 红灯闪烁 | 水泵故障 | 断电清洗水泵，仍闪烁请联系售后 |\n| 绿灯闪烁 | 滤芯到期提醒 | 更换滤芯后长按电源键 3 秒复位 |",
+          "score": 0.7595822589677163
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 919,
+          "category": "售后手册",
+          "section_path": "售后手册 / 常见故障自查",
+          "question": "常见故障自查",
+          "answer": "- 饮水机不出水:检查水位是否低于最低线、水泵是否卡阻,断电清洗水泵后重试。\n- 猫砂盆报错:清空废砂盒并检查滚筒是否卡砂,重启设备;仍报错联系售后。\n- 喂食器卡粮:检查粮食颗粒直径是否超 12mm、粮桶是否受潮结块,清理出粮口后重试。\n- 摄像头离线:确认 Wi-Fi 为 2.4G 频段、信号良好,重启设备或在 App 内重新配网。",
+          "score": 0.10105591346809123
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 940,
+          "category": "MH-W 系列饮水机保养指南",
+          "section_path": "MH-W 系列饮水机保养指南 / 水泵噪音处理",
+          "question": "水泵噪音处理",
+          "answer": "水泵噪音变大，多数是水位低于最低线导致吸入空气，或叶轮缠绕了猫毛。先加水至最高水位线；若仍有异响，断电拆下水泵，取出叶轮清除缠绕的毛发后装回。",
+          "score": 0.01124456072066409
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 921,
+          "category": "售后手册",
+          "section_path": "售后手册 / 维修寄修流程",
+          "question": "维修寄修流程",
+          "answer": "保修期内设备故障,联系客服登记后按指引将设备寄回指定维修点,核验后免费维修并寄回;超保或人为损坏维修可能收取工本费,费用会提前告知。",
+          "score": 0.010489091259938016
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 932,
+          "category": "设备故障代码",
+          "section_path": "设备故障代码 / 猫砂盆故障代码",
+          "question": "猫砂盆故障代码",
+          "answer": "| 代码 | 含义 | 处理办法 |\n| --- | --- | --- |\n| E1 | 滚筒转动受阻 | 断电后清理滚筒内结块与异物，再重新上电 |\n| E2 | 废砂盒未放到位 | 取出废砂盒重新推入，听到卡扣声即可 |\n| E3 | 称重传感器异常 | 将猫砂盆放在平整地面，在 App 中执行称重校准 |\n| E4 | 电机过载保护 | 断电静置 10 分钟后重启，频繁出现请联系售后 |\n| E5 | Wi-Fi 连接失败 | 检查路由器信号并在 App 中重新配网 |",
+          "score": 0.0028671585933937867
+        }
+      ],
+      "expected_points": [
+        "滤芯到期提醒",
+        "长按电源键 3 秒复位"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "F11",
+      "question": "FT-40 滤芯是给哪款饮水机用的",
+      "queries": [
+        "FT-40 滤芯是给哪款饮水机用的"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 981,
+          "category": "配件与耗材",
+          "section_path": "配件与耗材 / 饮水机滤芯型号",
+          "question": "饮水机滤芯型号",
+          "answer": "MH-W20 使用 FT-20 滤芯，MH-W40 使用 FT-40 滤芯，MH-W60 使用 FT-60 滤芯。三种滤芯尺寸不同，不可混用。",
+          "score": 0.9843363512883317
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 990,
+          "category": "商品规格手册",
+          "section_path": "商品规格手册 / 自动饮水机 Plus(型号 MH-W40)",
+          "question": "自动饮水机 Plus(型号 MH-W40)",
+          "answer": "- 型号:MH-W40\n- 水箱容量:4L\n- 过滤:五重过滤棉 + 椰壳活性炭,建议每 3 周更换一次滤芯\n- 核心功能:UV 紫外杀菌、静音变频水泵、缺水断电保护\n- 清洗:整机可拆分水洗,建议每周清洗一次",
+          "score": 0.04655127521213429
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 942,
+          "category": "MH-W 系列饮水机保养指南",
+          "section_path": "MH-W 系列饮水机保养指南 / 饮水机可加入的液体",
+          "question": "饮水机可加入的液体",
+          "answer": "饮水机只适合加入清水或纯净水。牛奶、羊奶、宠物营养液等含糖或含蛋白的液体会堵塞滤芯并滋生细菌，请勿加入。",
+          "score": 0.006564249220774553
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 941,
+          "category": "MH-W 系列饮水机保养指南",
+          "section_path": "MH-W 系列饮水机保养指南 / 新滤芯首次使用",
+          "question": "新滤芯首次使用",
+          "answer": "新滤芯拆封后，先用清水浸泡 5 分钟并轻轻挤压排出内部气泡，再装入饮水机，可避免初期出水带黑色炭粉。",
+          "score": 0.006338921737094388
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 991,
+          "category": "商品规格手册",
+          "section_path": "商品规格手册 / 自动饮水机 Pro 不锈钢(型号 MH-W60)",
+          "question": "自动饮水机 Pro 不锈钢(型号 MH-W60)",
+          "answer": "- 型号:MH-W60\n- 水箱容量:6L,304 不锈钢表面盘\n- 过滤:双滤芯并联,建议每 4 周更换一次滤芯\n- 核心功能:双泵冗余、无线水位提醒推送 App、缺水断电保护\n- 清洗:不锈钢面盘可高温消毒,建议每周清洗一次",
+          "score": 0.005865338360797102
+        }
+      ],
+      "expected_points": [
+        "MH-W40 使用 FT-40 滤芯"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    },
+    {
+      "case_id": "F12",
+      "question": "FT-20 滤芯能装到 MH-W40 上吗",
+      "queries": [
+        "FT-20 滤芯能装到 MH-W40 上吗"
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "number": 1,
+          "chunk_id": 981,
+          "category": "配件与耗材",
+          "section_path": "配件与耗材 / 饮水机滤芯型号",
+          "question": "饮水机滤芯型号",
+          "answer": "MH-W20 使用 FT-20 滤芯，MH-W40 使用 FT-40 滤芯，MH-W60 使用 FT-60 滤芯。三种滤芯尺寸不同，不可混用。",
+          "score": 0.9953904278206259
+        },
+        {
+          "n": 2,
+          "number": 2,
+          "chunk_id": 990,
+          "category": "商品规格手册",
+          "section_path": "商品规格手册 / 自动饮水机 Plus(型号 MH-W40)",
+          "question": "自动饮水机 Plus(型号 MH-W40)",
+          "answer": "- 型号:MH-W40\n- 水箱容量:4L\n- 过滤:五重过滤棉 + 椰壳活性炭,建议每 3 周更换一次滤芯\n- 核心功能:UV 紫外杀菌、静音变频水泵、缺水断电保护\n- 清洗:整机可拆分水洗,建议每周清洗一次",
+          "score": 0.3979384110732902
+        },
+        {
+          "n": 3,
+          "number": 3,
+          "chunk_id": 983,
+          "category": "配件与耗材",
+          "section_path": "配件与耗材 / 配件购买入口",
+          "question": "配件购买入口",
+          "answer": "原装滤芯、除臭包、剑麻替换柱等配件，可在 App「设备」页的「耗材商城」购买，也可在商城直接搜索配件型号下单。",
+          "score": 0.09009299396195182
+        },
+        {
+          "n": 4,
+          "number": 4,
+          "chunk_id": 941,
+          "category": "MH-W 系列饮水机保养指南",
+          "section_path": "MH-W 系列饮水机保养指南 / 新滤芯首次使用",
+          "question": "新滤芯首次使用",
+          "answer": "新滤芯拆封后，先用清水浸泡 5 分钟并轻轻挤压排出内部气泡，再装入饮水机，可避免初期出水带黑色炭粉。",
+          "score": 0.07198162701237078
+        },
+        {
+          "n": 5,
+          "number": 5,
+          "chunk_id": 989,
+          "category": "商品规格手册",
+          "section_path": "商品规格手册 / 自动饮水机(型号 MH-W20)",
+          "question": "自动饮水机(型号 MH-W20)",
+          "answer": "- 型号:MH-W20\n- 水箱容量:2L\n- 过滤:三重过滤棉,建议每 2 周更换一次滤芯\n- 核心功能:静音水泵、缺水断电保护、水位窗口\n- 清洗:水泵可拆卸,建议每周清洗一次",
+          "score": 0.039342503264258206
+        }
+      ],
+      "expected_points": [
+        "MH-W20 使用 FT-20 滤芯",
+        "不可混用"
+      ],
+      "expected_answerable": true,
+      "sufficient": true,
+      "label_basis": "expected section groups (not retriever-generated GT)",
+      "review_reason": "Top5 原文含标注要点"
+    }
+  ]
+}

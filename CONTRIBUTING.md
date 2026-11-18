@@ -17,11 +17,14 @@ See [project structure](docs/project-structure.md) and [operations](docs/operati
 5. Keep demonstrations explicitly labeled. Do not replace missing data with random
    numbers or turn a simulated action into a success claim.
 
-The GitHub workflow runs `uv run pytest` plus offline Python/configuration and
-JavaScript syntax checks (`python scripts/check_sources.py`,
-`node scripts/check_frontend.cjs`). The suite uses scripted fake models and never
-reads your `.env`. Live-MySQL tests are skipped unless `TEST_DATABASE_URL` points to
-a disposable database migrated to head; never point it at a database you care about.
+The GitHub workflow runs `uv run --locked ruff check`, offline Python/configuration
+and JavaScript/browser checks (`python -m scripts.check_sources`,
+`node scripts/check_frontend.cjs`, `node scripts/run_browser_checks.cjs`), and the
+full `uv run --locked pytest` suite against a disposable `mysql:8.4` service
+container migrated to head via keyless `alembic upgrade head` (including all
+live-MySQL integration tests). The suite uses scripted fake models and never reads
+your `.env`. Locally, live-MySQL tests are skipped unless `TEST_DATABASE_URL` points
+to a disposable database migrated to head; never point it at a database you care about.
 Workflow tests share the doubles in `tests/workflow_fakes.py`; extend those instead
 of writing another fake model, and do not import one test module from another.
 Tests do not replace browser validation for UI changes.

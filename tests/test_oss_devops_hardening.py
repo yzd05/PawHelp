@@ -398,3 +398,86 @@ async def test_classify_pool_reads_topic_service_url_and_commits_per_batch(
     assert report["service_url"] == "http://127.0.0.1:19110"
     assert len(report["classified"]) == 5
     assert all(row["status"] == "saved" for row in report["classified"])
+
+
+def test_adrs_baseline_snapshots_readme_and_scoring_fingerprint_intact() -> None:
+    from app.evaluation.runtime import DEFAULT_EVAL_CASES_PATH, report_dataset_alignment
+    from app.knowledge.confidence import EvidenceGate, scoring_fingerprint
+
+    adr_names = (
+        "0001-mysql-authority-and-milvus-derived-index.md",
+        "0002-deterministic-graph-and-two-stage-interrupts.md",
+        "0003-calibrated-evidence-gate-and-jev-routing.md",
+        "0004-immutable-three-layer-session-memory.md",
+    )
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    for name in adr_names:
+        adr_path = ROOT / "docs" / "adr" / name
+        assert adr_path.is_file(), f"missing ADR: {name}"
+        lines = adr_path.read_text(encoding="utf-8").splitlines()
+        assert 65 <= len(lines) <= 95, f"{name} line count {len(lines)} outside 65..95"
+        assert f"docs/adr/{name}" in readme
+
+    gitignore_lines = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
+    for unignored in (
+        "!reports/confidence-calibration/",
+        "!reports/confidence-calibration/relevance-train-served-20261020.json",
+        "!reports/confidence-calibration/relevance-validation-served-20261020.json",
+        "!reports/retrieval-evaluation.baseline.json",
+    ):
+        assert unignored in gitignore_lines
+
+    cal_artifact = json.loads(
+        (ROOT / "config" / "evidence-calibration.json").read_text(encoding="utf-8")
+    )
+    expected_fp = "65179ae03f93fa096dec247d7d97308e717e133e5e9fa562946a34ce7fa47580"
+    assert cal_artifact["scoring_fingerprint"] == expected_fp
+
+    settings = Settings(_env_file=ROOT / ".env.example")
+    actual_fp = scoring_fingerprint(ROOT / "knowledge", settings)
+    assert actual_fp == expected_fp
+
+    gate = EvidenceGate(settings, ROOT / "knowledge")
+    decision = gate.check([], legacy_confident=False)
+    assert decision.calibrated is True
+    assert decision.threshold == 0.174
+
+    allowed_fps = {
+        cal_artifact["scoring_fingerprint"],
+        cal_artifact.get("legacy_scoring_fingerprint"),
+    }
+    for rel_path in (
+        "reports/confidence-calibration/relevance-train-served-20261020.json",
+        "reports/confidence-calibration/relevance-validation-served-20261020.json",
+    ):
+        snap_path = ROOT / rel_path
+        assert snap_path.is_file(), f"missing calibration snapshot: {rel_path}"
+        snap_data = json.loads(snap_path.read_text(encoding="utf-8"))
+        assert snap_data["scoring_fingerprint"] in allowed_fps
+        assert isinstance(snap_data.get("rows"), list) and snap_data["rows"]
+
+    baseline_path = ROOT / "reports" / "retrieval-evaluation.baseline.json"
+    assert baseline_path.is_file()
+    assert 150_000 <= baseline_path.stat().st_size <= 460_000
+    baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+    assert baseline["is_baseline_snapshot"] is True
+    assert baseline["dataset"] == {
+        "total_cases": 500,
+        "answerable_cases": 410,
+        "refusal_cases": 90,
+    }
+    assert len(baseline["cases"]) == 2000
+    alignment = report_dataset_alignment(baseline, ROOT / DEFAULT_EVAL_CASES_PATH)
+    assert alignment == {"status": "current", "changed_cases": 0}
+
+    for img_name in ("interrupt-flow.png", "chat.png", "kb.png", "rag-eval.png", "review.png"):
+        img_path = ROOT / "docs" / "images" / img_name
+        assert img_path.is_file() and img_path.stat().st_size > 10_000
+
+    assert "v1.1.0" in readme
+    assert "English Overview" in readme
+    assert "docs/images/interrupt-flow.png" in readme
+    assert "Hold-out Only" in readme
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    assert "## 1.1.0 — 2026-11-17" in changelog
+

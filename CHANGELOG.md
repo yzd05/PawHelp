@@ -1,5 +1,69 @@
 # Changelog
 
+## 1.1.0 — 2026-11-17
+
+### Conversation & workflow
+
+- Removed the legacy `content_types=("policy",)` hard filter in `TurnNodes.retrieve`
+  on return and after-sales intents while preserving multi-angle `_policy_queries`
+  expansion, so product manuals (`manuals/after-sales.md`) and operator-approved
+  flywheel FAQ entries are retrieved on the live path.
+- Split structured lightweight nodes onto `create_fast_chat_model` (15 s timeout,
+  `max_retries=1`) for reference resolution, intent classification, query
+  understanding, question splitting, knowledge consistency, mining, titles and
+  summaries; removed double-retry amplification on `classify_intent` timeouts and
+  added a 90 s whole-turn wall-clock timeout (`workflow_turn_timeout_seconds`).
+- Incremental SSE delta streaming, cached MCP tool discovery, explicit SQLAlchemy
+  connection pool sizing (`db_pool_size`, `db_max_overflow`,
+  `db_pool_recycle_seconds`), non-blocking async observability persistence, and
+  aligned `.env.example` context window defaults (`MODEL_CONTEXT_WINDOW=65536`,
+  `MODEL_MAX_OUTPUT_TOKENS=1024`).
+
+### Knowledge, flywheel & evaluation
+
+- Hardened MySQL-to-Milvus dual writes with a four-state lifecycle
+  (`pending / done / failed / deleting`): deletes and Markdown syncs mark
+  transient `deleting` tombstones before Milvus vector removal (excluded from
+  hydration and chunk totals), batch vectorization isolates poison-pill chunks as
+  `failed` without blocking healthy peers, Milvus UTF-8 `VARCHAR` byte limits are
+  widened and validated, and orphan vectors are reconciled bidirectionally.
+- Scoped `prev_chunk_id` / `next_chunk_id` adjacency links strictly to chunks
+  sharing the same `section_path`; pre-ranked `ReviewQueue` candidates by lexical
+  overlap when exceeding `flywheel_candidate_limit` (100) instead of raising a
+  hard error; pinned explicit JSON-mode keys in
+  `CONVERSATION_KNOWLEDGE_EXTRACTION_SYSTEM_TEMPLATE`; safely awaited cancelled
+  `jev_task` in shadow mode; shared warmed models in `EvaluationPipeline`.
+- Tracked synthetic calibration snapshots
+  (`relevance-train-served-20261020.json`,
+  `relevance-validation-served-20261020.json`) and a compact read-only evaluation
+  baseline (`reports/retrieval-evaluation.baseline.json`) with automatic fallback
+  in `GET /v1/rag-eval/report`, so `/observability` and `/rag-eval` render full
+  charts out of the box on fresh clones without paid model runs.
+
+### Security & web
+
+- Unified admin route authentication under `app.api.auth.authorize` (including
+  `/v1/topics/*`), moved all scripts and styles out of the 6 HTML pages into
+  external static modules, enforced strict CSP3 (`default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; frame-ancestors 'none'`)
+  plus `X-Content-Type-Options`, `X-Frame-Options` and `Referrer-Policy` headers
+  alongside DOMPurify sanitization, and bounded `ChatRequest` / `ExtractionRequest`
+  payload lengths.
+- Introduced `LazyASGIApp` for side-effect-free `app.main` imports and non-blocking
+  route handlers.
+
+### Packaging, documentation & CI
+
+- Cross-platform `pyproject.toml` and `uv.lock` (CUDA 13.0 PyTorch wheels on
+  Windows/Linux with automatic PyPI wheel fallback on macOS), `pawhelp-start --bootstrap`
+  one-command onboarding with custom MCP port forwarding, keyless Alembic
+  migrations (including `0013_hardening_schema_cleanup`), `SECURITY.md`,
+  `THIRD_PARTY_NOTICES.md`, GitHub issue/PR templates, and 4 architecture decision
+  records under `docs/adr/0001..0004`.
+- GitHub Actions CI (`source-checks.yml`) runs `uv run --locked ruff check`,
+  headless browser Markdown/XSS assertions, keyless `alembic upgrade head` against
+  `mysql:8.4` (`+00:00`), and the full `pytest` suite including live-MySQL
+  integration tests.
+
 ## 1.0.0 — 2026-10-22
 
 ### Conversation
