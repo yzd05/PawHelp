@@ -14,96 +14,126 @@
     <header class="topbar">
       <div class="brand">
         <h1>RAG 质量评估</h1>
-        <p class="subtitle">四策略检索对照 · 召回材料字面命中 · 最终答案模型评估</p>
+        <p class="subtitle">四路检索召回对比 · 生成回答质量评估 · 异常样本人工复核</p>
       </div>
       <nav class="actions" aria-label="页面操作">
         <span class="page-nav" aria-label="全局页面导航" data-app-navigation>
           <a href="/">聊天</a>
           <a href="/kb">知识库</a>
-          <a href="/rag-eval" aria-current="page">评测</a>
+          <a href="/rag-eval" aria-current="page">检索评测</a>
         </span>
-        <label class="run-option"><input id="fullGeneration" type="checkbox" checked>四路线生成（完整评估）</label>
+        <label class="run-option" for="fullGeneration">
+          <input id="fullGeneration" type="checkbox" checked>四路生成对比
+        </label>
         <button class="button" id="rerunButton" type="button">重新运行评估</button>
       </nav>
     </header>
 
-    <div class="notice" id="status">正在读取评估报告…</div>
+    <div class="notice" id="status" role="status" aria-live="polite">正在读取评估报告…</div>
 
     <section class="panel empty-state" id="emptyState" hidden>
-      <h2>还没有评估报告</h2>
-      <p>可以点击右上角“重新运行评估”，或在命令行生成报告后刷新本页：</p>
+      <h2>暂无评估报告</h2>
+      <p>可点击右上角“重新运行评估”，或在命令行生成报告后刷新本页：</p>
       <code>uv run python -m scripts.run_retrieval_evals</code>
     </section>
 
-    <section class="run-grid report-only" id="runMeta" aria-label="评测运行信息"></section>
+    <section class="run-grid report-only" id="runMeta" aria-label="评测运行概览"></section>
 
-    <section class="metrics report-only" id="metrics" aria-label="生产策略指标"></section>
+    <section class="metrics report-only" id="metrics" aria-label="核心策略指标"></section>
 
-    <section class="panel report-only">
+    <section class="panel report-only" aria-labelledby="retrievalHeading">
       <div class="panel-head">
-        <div><h2>检索质量（确定性）</h2><p class="subtitle">四策略在各可回答题型与总体上的对比</p></div>
-        <div class="metric-tabs" id="metricTabs">
-          <button class="metric-tab active" data-metric="mrr" type="button">MRR</button>
-          <button class="metric-tab" data-metric="recall_at_k" type="button">Recall@5</button>
-          <button class="metric-tab" data-metric="evidence_coverage" type="button">召回材料要点命中（字面）</button>
+        <div>
+          <h2 id="retrievalHeading">检索召回对比</h2>
+          <p class="subtitle">四种检索策略在各业务题型与全部可答题上的命中表现</p>
+        </div>
+        <div class="metric-tabs" id="metricTabs" role="group" aria-label="检索评估指标">
+          <button class="metric-tab active" data-metric="mrr" type="button" aria-pressed="true">MRR</button>
+          <button class="metric-tab" data-metric="recall_at_k" type="button" aria-pressed="false">Recall@5</button>
+          <button class="metric-tab" data-metric="evidence_coverage" type="button" aria-pressed="false">要点命中率</button>
         </div>
       </div>
       <p class="metric-help" id="retrievalMetricHelp"></p>
-      <div class="legend" id="strategyLegend"></div>
-      <div class="bucket-chart" id="bucketChart"></div>
-      <div class="reading" id="retrievalReading"></div>
+      <div class="chart-Subbar">
+        <div class="legend" id="strategyLegend" aria-label="检索策略图例"></div>
+        <div class="reading" id="retrievalReading"></div>
+      </div>
+      <div class="bucket-chart" id="bucketChart" role="img" aria-label="各业务题型四策略检索指标对比图"></div>
     </section>
 
-    <section class="panel report-only">
+    <section class="panel report-only" aria-labelledby="generationHeading">
       <div class="panel-head">
-        <div><h2>生成质量（端到端）</h2><p class="subtitle">最终答案要点是否答全，与回答事实是否有引用依据；库外拒答见顶部总览</p></div>
-        <div class="metric-tabs" id="generationTabs">
-          <button class="metric-tab active" data-generation-metric="answer_coverage" type="button">最终答案要点覆盖（模型）</button>
-          <button class="metric-tab" data-generation-metric="faithfulness" type="button">回答事实有据（模型）</button>
+        <div>
+          <h2 id="generationHeading">生成回答质量</h2>
+          <p class="subtitle">评估最终回答的要点覆盖完整度与事实引用有据率；超纲拒答表现见顶部总览</p>
+        </div>
+        <div class="metric-tabs" id="generationTabs" role="group" aria-label="生成评估指标">
+          <button class="metric-tab active" data-generation-metric="answer_coverage" type="button" aria-pressed="true">要点覆盖率</button>
+          <button class="metric-tab" data-generation-metric="faithfulness" type="button" aria-pressed="false">事实有据率</button>
         </div>
       </div>
       <p class="metric-help" id="generationMetricHelp"></p>
       <div class="legend" id="generationLegend"></div>
-      <div class="bucket-chart" id="generationChart" hidden></div>
+      <div class="bucket-chart" id="generationChart" role="img" aria-label="各业务题型生成质量对比图" hidden></div>
       <div class="production-breakdown" id="productionBreakdown" hidden>
         <h3 class="breakdown-title" id="productionBreakdownTitle"></h3>
         <div id="faithBars"></div>
       </div>
     </section>
 
-    <section class="panel report-only">
+    <section class="panel report-only" aria-labelledby="issuesHeading">
       <div class="panel-head">
-        <div><h2>需人工复核的问题（仅混合 + Rerank）</h2><p class="subtitle">四类标签可重叠，因此筛选数之和可能大于题数；只有“回答事实无依据”支持人工处置，原始模型分数不变</p></div>
-        <span class="chip" id="issueCount">0 条</span>
+        <div>
+          <h2 id="issuesHeading">异常样本与人工复核</h2>
+          <p class="subtitle">聚焦混合 + Rerank 路线的待排查样本；人工复核仅更新台账状态，原始模型分数不变</p>
+        </div>
+        <span class="chip" id="issueCount">0 题</span>
       </div>
-      <div class="issue-filters" id="issueFilters"></div>
+      <div class="issue-filters" id="issueFilters" role="group" aria-label="异常类型筛选"></div>
       <p class="review-note" id="reviewNotice" role="status"></p>
       <div class="issue-list" id="issueList"></div>
-      <nav class="issue-pagination" id="issuePagination" aria-label="问题分页"></nav>
+      <nav class="issue-pagination" id="issuePagination" aria-label="异常样本分页"></nav>
     </section>
 
-    <section class="panel report-only">
+    <section class="panel report-only" aria-labelledby="matrixHeading">
       <div class="panel-head">
-        <div><h2>完整数据（同一轮评估汇总）</h2><p class="subtitle">这张表供核对上方图表，并非另一轮结果；“—”表示未评测，不等于 0 分。除 MRR 外，数值按比例显示。</p></div>
+        <div>
+          <h2 id="matrixHeading">完整数据汇总</h2>
+          <p class="subtitle">同一轮评测下四条策略的分题型与全局指标对照（“—”表示未运行该项，不计 0 分）</p>
+        </div>
         <span class="chip">策略汇总</span>
       </div>
-      <div class="matrix-wrap">
-        <table aria-label="四策略完整评估数据">
+      <div class="matrix-wrap" tabindex="0" role="region" aria-labelledby="matrixHeading">
+        <table>
           <thead>
             <tr>
-              <th>策略</th><th>政策 MRR</th><th>型号 MRR</th><th>口语 MRR</th><th>多要点组合 MRR</th><th>标识符 MRR</th>
-              <th>总体 MRR</th><th>Recall@5</th><th>召回材料要点命中（字面）</th><th>最终答案要点覆盖（模型）</th><th>回答事实有据（模型，仅重排路线）</th><th>库外正确拒答率</th><th>库内误拒答率</th>
+              <th scope="col">策略</th>
+              <th scope="col">售后政策 MRR</th>
+              <th scope="col">商品规格 MRR</th>
+              <th scope="col">口语提问 MRR</th>
+              <th scope="col">多要点 MRR</th>
+              <th scope="col">故障配件 MRR</th>
+              <th scope="col">总体 MRR</th>
+              <th scope="col">Recall@5</th>
+              <th scope="col">要点命中率</th>
+              <th scope="col">要点覆盖率</th>
+              <th scope="col">事实有据率</th>
+              <th scope="col">超纲正确拒答率</th>
+              <th scope="col">库内误拒率</th>
             </tr>
           </thead>
           <tbody id="summaryTable"></tbody>
         </table>
       </div>
-      <div class="reading" id="tableReading"></div>
+      <div class="reading table-summary" id="tableReading"></div>
     </section>
 
-    <section class="panel report-only">
+    <section class="panel report-only" aria-labelledby="auditHeading">
       <div class="panel-head">
-        <div><h2>逐题证据审计</h2><p class="subtitle">同一题的四路线明细：检索材料按字面命中计分，最终答案由模型判断；事实依据仅核查混合 + Rerank</p></div>
+        <div>
+          <h2 id="auditHeading">逐题证据审计</h2>
+          <p class="subtitle">对照单题下四条检索路线的召回知识块排位、命中状态与生成回复明细</p>
+        </div>
         <select class="case-picker" id="casePicker" aria-label="选择评估问题"></select>
       </div>
       <div id="caseSummary"></div>
@@ -113,7 +143,7 @@
     <section class="panel rerun-panel">
       <div>
         <h2>重新生成评估报告</h2>
-        <p id="rerunCopy">运行全部评测题 × 4 条检索路线；默认四路线生成并评估答案覆盖度，取消勾选可只生成混合 + Rerank 答案以节省模型调用。</p>
+        <p id="rerunCopy">运行全部评测题 × 4 条检索路线；默认四路生成并评估要点覆盖率，取消顶部勾选可仅生成混合 + Rerank 回答以节省模型调用。</p>
       </div>
       <button class="button rerun-trigger" type="button">重新运行评估</button>
     </section>

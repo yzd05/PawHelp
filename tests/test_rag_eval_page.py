@@ -47,23 +47,31 @@ def test_rag_eval_page_and_external_modules_are_served() -> None:
     assert '/static/rag-eval.js' in page.text
     assert "RAG 质量评估" in page.text
     assert "重新运行评估" in page.text
-    assert "完整数据" in page.text
-    assert "需人工复核的问题（仅混合 + Rerank）" in page.text
+    assert "检索召回对比" in page.text
+    assert "生成回答质量" in page.text
+    assert "完整数据汇总" in page.text
+    assert "异常样本与人工复核" in page.text
     assert "逐题证据审计" in page.text
     assert 'id="fullGeneration" type="checkbox" checked' in page.text
     assert 'id="issuePagination"' in page.text
-    assert "召回材料要点命中（字面）" in page.text
-    assert "最终答案要点覆盖（模型）" in page.text
-    assert "回答事实有据（模型）" in page.text
+    assert "要点命中率" in page.text
+    assert "要点覆盖率" in page.text
+    assert "事实有据率" in page.text
     assert 'id="retrievalMetricHelp"' in page.text
     assert 'id="generationMetricHelp"' in page.text
     assert 'id="productionBreakdown" hidden' in page.text
     assert 'id="refusalCard"' not in page.text
+    for legacy_copy in ("（确定性）", "召回材料要点命中（字面）", "（端到端）", "（模型）", "读图："):
+        assert legacy_copy not in page.text
+        assert legacy_copy not in module_script.text
 
     assert stylesheet.status_code == 200
     assert base_script.status_code == 200
     assert module_script.status_code == 200
     assert "adminHeaders" in module_script.text
+    assert "售后与退换政策" in module_script.text
+    assert "全部可答题" in module_script.text
+    assert "当前展示内置基准评测快照" in module_script.text
     assert "当前评测题已修改，页面显示的是旧题目的历史分数" in module_script.text
     assert "旧口径报告，不含答案语义覆盖度" in module_script.text
     assert "知识块回答" in module_script.text
