@@ -43,17 +43,21 @@ def group_near_duplicates(rows, threshold=.85):
         for gram in grams:
             index[gram].append(i)
     # Known lineage and exact duplicates must also participate in the component.
-    known={}
-    for i,row in enumerate(rows):
-        for value in (('source',row['group_id']),('exact',text_key(row['text']))):
-            if value in known: union(known[value],i)
-            else: known[value]=i
-    components=defaultdict(list)
-    for i in range(len(rows)): components[root(i)].append(i)
-    output=[dict(row) for row in rows]
+    known = {}
+    for i, row in enumerate(rows):
+        for value in (('source', row['group_id']), ('exact', text_key(row['text']))):
+            if value in known:
+                union(known[value], i)
+            else:
+                known[value] = i
+    components = defaultdict(list)
+    for i in range(len(rows)):
+        components[root(i)].append(i)
+    output = [dict(row) for row in rows]
     for members in components.values():
-        group='near-'+digest(sorted(rows[i]['id'] for i in members))[:20]
-        for i in members: output[i]['near_duplicate_group_id']=group
+        group = 'near-' + digest(sorted(rows[i]['id'] for i in members))[:20]
+        for i in members:
+            output[i]['near_duplicate_group_id'] = group
     evidence=[{'a':rows[a]['id'],'b':rows[b]['id'],'similarity':round(score,4)}
               for a,b,score in sorted(pairs)]
     return output, {'policy':'shared character trigram, min length 6, SequenceMatcher >= threshold; group only, no label merge',
@@ -75,4 +79,5 @@ def main():
     print({'samples':len(output),'groups':report['groups'],'near_pairs':len(report['linked_pairs'])})
 
 
-if __name__=='__main__': main()
+if __name__ == '__main__':
+    main()

@@ -1,6 +1,6 @@
 """Server-owned history reconstruction and public hydration contracts."""
 
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, ToolMessage
 
 from app.database.models import Message
 from app.schemas import ChatRequest

@@ -108,7 +108,8 @@ async def test_preview_refresh_resume_owned_once_and_cancel_audit(mysql_session,
         await saver_context.__aexit__(None, None, None)
         if cid:
             async with sessions() as session, session.begin():
-                for cls in (RequestObservation, ToolAuditLog, Ticket, Message): await session.execute(delete(cls).where(cls.conversation_id == cid))
+                for cls in (RequestObservation, ToolAuditLog, Ticket, Message):
+                    await session.execute(delete(cls).where(cls.conversation_id == cid))
                 await session.execute(delete(Conversation).where(Conversation.id == cid))
 
 

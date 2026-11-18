@@ -1,6 +1,5 @@
 """Executable database and maintenance scripts without a live networked MySQL server."""
 
-from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any

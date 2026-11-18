@@ -14,7 +14,8 @@ class AuditSessions:
     def __init__(self, fail=False): self.rows, self.fail = [], fail
     def __call__(self): return self
     async def __aenter__(self):
-        if self.fail: raise RuntimeError("synthetic audit outage")
+        if self.fail:
+            raise RuntimeError("synthetic audit outage")
         return self
     async def __aexit__(self, *args): pass
     def begin(self): return self

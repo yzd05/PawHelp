@@ -68,10 +68,16 @@ def _valid(key: str, data) -> bool:
     if key == "threshold":
         trials = data.get("trials")
         chosen = data.get("chosen")
-        valid_trial = lambda row: (isinstance(row, dict) and _number(row.get("threshold"), probability=True)
-                                  and _number(row.get("micro_f1"), probability=True)
-                                  and _number(row.get("macro_f1"), probability=True)
-                                  and _count(row.get("fp")) and _count(row.get("fn")))
+
+        def valid_trial(row):
+            return (
+                isinstance(row, dict)
+                and _number(row.get("threshold"), probability=True)
+                and _number(row.get("micro_f1"), probability=True)
+                and _number(row.get("macro_f1"), probability=True)
+                and _count(row.get("fp"))
+                and _count(row.get("fn"))
+            )
         return (data.get("selection_split") == "validation_only"
                 and isinstance(trials, list) and bool(trials) and all(valid_trial(row) for row in trials)
                 and valid_trial(chosen) and chosen in trials

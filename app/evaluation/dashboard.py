@@ -29,7 +29,13 @@ def _label_snapshot(directory, digest, artifact):
         if path.is_symlink() or path.stat().st_size > 10_000_000:
             continue
         raw = path.read_bytes()
-        if hashlib.sha256(raw).hexdigest() != digest:
+        lf = raw.replace(b"\r\n", b"\n")
+        crlf = lf.replace(b"\n", b"\r\n")
+        if digest not in {
+            hashlib.sha256(raw).hexdigest(),
+            hashlib.sha256(lf).hexdigest(),
+            hashlib.sha256(crlf).hexdigest(),
+        }:
             continue
         data = json.loads(raw)
         allowed_fingerprints = {
@@ -104,6 +110,8 @@ def calibration_report(settings, root):
               "message": "尚无可用校准报告", "distributions": [], "scan": []}
     try:
         path = Path(getattr(settings, "evidence_calibration_path", "config/evidence-calibration.json"))
+        if not path.is_absolute() and (root / path).is_file():
+            path = root / path
         artifact = json.loads(path.read_text(encoding="utf-8"))
         gate = EvidenceGate(settings, root / "knowledge")
         decision = gate.check([], legacy_confident=False)

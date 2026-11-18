@@ -37,13 +37,15 @@ def stage_base(output: Path):
     tokenizer=AutoTokenizer.from_pretrained(BASE_MODEL,cache_dir=cache_dir)
     model=AutoModelForSequenceClassification.from_pretrained(BASE_MODEL,cache_dir=cache_dir,
         num_labels=len(TOPIC_NAMES),problem_type="multi_label_classification",id2label=ID2LABEL,label2id=LABEL2ID)
-    if not torch.cuda.is_available(): raise RuntimeError("authorized CUDA unavailable")
+    if not torch.cuda.is_available():
+        raise RuntimeError("authorized CUDA unavailable")
     model.to("cuda")
     tokens=tokenizer(["买大了想退"],return_tensors="pt",truncation=True,max_length=128).to("cuda")
     labels=torch.zeros((1,len(TOPIC_NAMES)),device="cuda",dtype=torch.float32)
     result=model(**tokens,labels=labels)
     result.loss.backward()
-    if not torch.isfinite(result.loss): raise RuntimeError("actual BERT multilabel loss nonfinite")
+    if not torch.isfinite(result.loss):
+        raise RuntimeError("actual BERT multilabel loss nonfinite")
     revision=getattr(model.config,"_commit_hash",None)
     model.to("cpu").save_pretrained(str(output))
     tokenizer.save_pretrained(str(output))
@@ -212,10 +214,12 @@ def main():
     elif args.action=="stage-base":
         stage_base(args.output)
     elif args.action=="train":
-        if not args.dataset: parser.error("--dataset required")
+        if not args.dataset:
+            parser.error("--dataset required")
         train(args.dataset,args.output,epochs=args.epochs,batch=args.batch)
     else:
-        if not args.dataset or not args.model: parser.error("--dataset and --model required")
+        if not args.dataset or not args.model:
+            parser.error("--dataset and --model required")
         evaluate_model(args.model,args.dataset,args.output)
 
 

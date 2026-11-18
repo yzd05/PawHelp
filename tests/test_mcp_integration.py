@@ -9,7 +9,6 @@ import subprocess
 import sys
 
 import httpx
-import pytest
 
 from app.config import Settings
 from app.tools.business import ToolRuntime
@@ -39,11 +38,13 @@ def start(module, env, *, extended=False):
 async def ready(url, process):
     async with httpx.AsyncClient() as client:
         for _ in range(120):
-            if process.poll() is not None: raise AssertionError("MCP process failed at startup")
+            if process.poll() is not None:
+                raise AssertionError("MCP process failed at startup")
             try:
                 await client.get(url, timeout=.3)
                 return
-            except httpx.TransportError: await asyncio.sleep(.1)
+            except httpx.TransportError:
+                await asyncio.sleep(.1)
     raise AssertionError("MCP process readiness timeout")
 
 
@@ -117,4 +118,5 @@ async def test_two_mcp_processes_owned_data_dynamic_discovery_and_permission(tmp
         isolated = await catalog.snapshot(runtime)
         assert "query_warranty" in isolated.names and "query_logistics" not in isolated.names
     finally:
-        for proc in processes: stop(proc)
+        for proc in processes:
+            stop(proc)

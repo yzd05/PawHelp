@@ -14,14 +14,19 @@ from app.evaluation.runtime import DEFAULT_EVAL_CASES_PATH, DEFAULT_GENERATION_S
 logger = logging.getLogger(__name__)
 
 
-class ModelCallBudgetExceeded(RuntimeError): pass
+class ModelCallBudgetExceeded(RuntimeError):
+    pass
 
 
 class CallBudget(AsyncCallbackHandler):
     raise_error = True
-    def __init__(self, limit): self.limit, self.calls = limit, 0
+
+    def __init__(self, limit):
+        self.limit, self.calls = limit, 0
+
     async def on_chat_model_start(self, serialized, messages, **kwargs):
-        if self.calls >= self.limit: raise ModelCallBudgetExceeded("评估模型调用预算已耗尽")
+        if self.calls >= self.limit:
+            raise ModelCallBudgetExceeded("评估模型调用预算已耗尽")
         self.calls += 1
 
 
@@ -61,7 +66,8 @@ class EvaluationPipeline:
             return row.id
 
     async def run(self, triggered_by="手动"):
-        if self.lock.locked(): raise ValueError("已有评估正在运行")
+        if self.lock.locked():
+            raise ValueError("已有评估正在运行")
         async with self.lock:
             directory = self.root / "reports" / "runs" / (datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ-") + uuid4().hex[:8])
             budget = CallBudget(self.settings.evaluation_max_model_calls)

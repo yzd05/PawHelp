@@ -32,6 +32,6 @@
   "scope_limit": "96 题小样本的线上路径 Top5 快照（知识意图：改写 + 拆分 + 全库）；政策意图的附加查询与内容类型过滤未覆盖，改写模型非确定，本快照只是一次采样。评测题与知识文档均为自建生成，不代表生产错误率保证。",
   "kept_entries_sha256": "086ad7bbb96eca52e3283a0e4bb9b4a3ed45b303e8f4ac0a06b1e8ea2c1cff66",
   "kept_entries_count": 1,
-  "training_labels_sha256": "46912ff029ee96cf0ccc1b9b1132bbc2d6a028f3f0a390c2ebd47fc7aaaaf79e",
-  "validation_labels_sha256": "e9c7bcb38ec2ac2271d95bf8a33be75010c14bcef8061a9cf7d0ea980fefb42c"
+  "training_labels_sha256": "3bfee7a138a9478425504c37ea7c79b09542fe208e53e02dcf16f1b3f491a245",
+  "validation_labels_sha256": "237aca2c4c027cd19010f83ecaf8b94105cf2ffde7d0128bbb0088f20e4da726"
 }

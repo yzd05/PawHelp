@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 import json
 import os
 from pathlib import Path
@@ -18,16 +18,14 @@ import httpx
 from pydantic import SecretStr
 import pytest
 from sqlalchemy import Column, DateTime, Integer, JSON, MetaData, String, Table, Text, select, text
-from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.config import Settings
-from app.database.models import Conversation, KnowledgeChunk, Message, QAExtractionStaging, ReviewQueue
+from app.database.models import Conversation, KnowledgeChunk, Message, ReviewQueue
 from app.database.session import MYSQL_UTC_INIT_COMMAND, create_async_engine_from_settings
 from app.evaluation.retrieval_quality import (
     CachedQueryPlanner,
     EvalCase,
-    RetrievalQualityEvaluator,
     group_retrieval_scores,
     reciprocal_rank,
 )
@@ -43,17 +41,16 @@ from app.knowledge.consistency import KnowledgeConsistencyChecker
 from app.knowledge.embedding import VECTOR_DIMENSION
 from app.knowledge.pipeline import KnowledgeEvidencePipeline, QuestionSplitter
 from app.knowledge.query_understanding import IdentityQueryUnderstanding, QueryPlan
-from app.knowledge.reranking import BgeReranker
-from app.knowledge.search import HybridKnowledgeSearch, KnowledgeMatch, RetrievalResult, RetrievalStrategy
+from app.knowledge.search import HybridKnowledgeSearch
 from app.knowledge.vector_store import (
     MAX_CATEGORY_BYTES,
     MAX_SECTION_PATH_BYTES,
     MAX_TEXT_BYTES,
     MilvusKnowledgeStore,
 )
-from app.knowledge.vectorization import rebuild_collection, reconcile_missing_vectors, vectorize_pending
+from app.knowledge.vectorization import reconcile_missing_vectors, vectorize_pending
 from app.repositories.knowledge import KnowledgeRepository
-from app.repositories.knowledge_mining import KnowledgeCandidate, KnowledgeMiningRepository
+from app.repositories.knowledge_mining import KnowledgeMiningRepository
 from app.schemas import ManualKnowledgeRequest, MarkdownKnowledgeRequest
 from app.services.knowledge_admin import (
     KnowledgeAdminService,
@@ -1124,7 +1121,7 @@ async def test_knowledge_admin_intra_batch_conflict_overview_file_count_and_sqli
                     Message(conversation_id=ended_conv.id, role="assistant", content="签收后 3 个工作日内开具电子发票。"),
                 ]
             )
-            active_id, ended_id = active_conv.id, ended_conv.id
+            ended_id = ended_conv.id
 
         async with sessions() as s:
             mining_repo = KnowledgeMiningRepository(s)

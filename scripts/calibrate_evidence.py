@@ -109,11 +109,18 @@ def main():
                          dataset_hash=data["dataset_sha256"], validation_rows=validation)
     for key in ("collection_mode", "reviewer", "scope_limit", "kept_entries_sha256", "kept_entries_count"):
         artifact[key] = data.get(key)
-    artifact["training_labels_sha256"] = hashlib.sha256(args.labels.read_bytes()).hexdigest()
-    artifact["validation_labels_sha256"] = hashlib.sha256(args.validation_labels.read_bytes()).hexdigest() if args.validation_labels else None
+    artifact["training_labels_sha256"] = hashlib.sha256(
+        args.labels.read_bytes().replace(b"\r\n", b"\n")
+    ).hexdigest()
+    artifact["validation_labels_sha256"] = (
+        hashlib.sha256(args.validation_labels.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+        if args.validation_labels
+        else None
+    )
     args.publish.parent.mkdir(parents=True, exist_ok=True)
     args.publish.write_text(json.dumps(artifact, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"published {args.publish}; validation={artifact['validation']}")
 
 
-if __name__ == "__main__": main()
+if __name__ == "__main__":
+    main()

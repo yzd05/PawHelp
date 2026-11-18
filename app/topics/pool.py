@@ -23,7 +23,8 @@ class TopicPool:
             # Current classifier consumes semantically complete flywheel text.
             # Unmerged raw pronouns are not guessed as a subject.
             statement=statement.where(TopicClassification.id.is_(None),ReviewQueue.id.is_not(None))
-        if limit is not None: statement=statement.limit(limit)
+        if limit is not None:
+            statement = statement.limit(limit)
         async with self.sessions() as session:
             return [dict(row) for row in (await session.execute(statement)).mappings().all()]
 

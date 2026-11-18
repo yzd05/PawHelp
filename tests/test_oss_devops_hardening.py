@@ -481,3 +481,18 @@ def test_adrs_baseline_snapshots_readme_and_scoring_fingerprint_intact() -> None
     changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     assert "## 1.1.0 — 2026-11-17" in changelog
 
+    from app.api.evaluation import _read_rag_eval_report
+    from app.evaluation.dashboard import calibration_report
+
+    cal_report = calibration_report(settings, ROOT)
+    assert cal_report["available"] is True, cal_report["message"]
+    assert cal_report["active"] is True
+    assert cal_report["active_threshold"] == 0.174
+    assert cal_report["validation_passed"] is True
+    assert cal_report["training_size"] == 72
+    assert cal_report["validation_size"] == 24
+
+    rag_report = _read_rag_eval_report(ROOT)
+    assert rag_report["dataset"]["total_cases"] == 500
+
+

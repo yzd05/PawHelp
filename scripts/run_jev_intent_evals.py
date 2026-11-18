@@ -124,7 +124,8 @@ def markdown(summary: dict) -> str:
              f"每题大模型调用 {summary['runs_per_case']} 次，Jev 1 次。阈值只用训练集选。", "",
              "| 集合 | 次数 | 大模型意图准确率 | 大模型全字段通过 | Jev top-1 准确率 | AUC 大模型自报 | AUC Jev | 可被复核的错判 |",
              "|---|---:|---:|---:|---:|---:|---:|---:|"]
-    fmt = lambda x: "—" if x is None else f"{x:.3f}"
+    def fmt(x):
+        return "—" if x is None else f"{x:.3f}"
     for name, label in (("train", "训练"), ("validation", "验证")):
         p = summary[name]
         lines.append(f"| {label} | {p['runs']} | {p['llm_intent_accuracy']:.3f} | {p['llm_all_fields']:.3f} | {p['jev_top1_accuracy']:.3f} "

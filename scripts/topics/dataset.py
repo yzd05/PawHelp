@@ -47,9 +47,11 @@ def split_groups(rows: list[dict], seed: int = 42) -> dict[str, list[dict]]:
             else:
                 mapping[value] = i
         if row.get('near_duplicate_group_id'):
-            near=row['near_duplicate_group_id']
-            if near in seen_near: union(i,seen_near[near])
-            else: seen_near[near]=i
+            near = row['near_duplicate_group_id']
+            if near in seen_near:
+                union(i, seen_near[near])
+            else:
+                seen_near[near] = i
         cleaned.append({**row, "text": text, "labels": labels})
     if len({row["id"] for row in cleaned}) != len(cleaned):
         raise ValueError("duplicate sample ids")

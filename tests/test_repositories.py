@@ -3,7 +3,6 @@
 from uuid import uuid4
 
 import pytest
-from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.repositories.conversations import ConversationNotFound, ConversationRepository
 from app.repositories.messages import MessageRepository
