@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import asyncio
+import re
 from collections.abc import AsyncIterator, Callable, Sequence
 from dataclasses import dataclass
-import re
 from typing import Protocol, runtime_checkable
 
 from langchain_core.tools import BaseTool
@@ -42,7 +41,6 @@ class PreparedTurn:
     prepared_context: PreparedContext
     tool_runtime: ToolRuntime
     layered_context: bool = False
-    turn_lock: asyncio.Lock | None = None
 
 
 @runtime_checkable
@@ -105,13 +103,13 @@ def build_done_event(
 
 
 __all__ = [
+    "_KNOWLEDGE_REFUSAL",
+    "_KNOWLEDGE_REFUSAL_ACTIONS",
     "ChatService",
     "PreparedTurn",
     "ToolAwareChatService",
     "ToolBuilder",
     "ToolCallingChatModel",
-    "_KNOWLEDGE_REFUSAL",
-    "_KNOWLEDGE_REFUSAL_ACTIONS",
     "build_done_event",
     "build_error_event",
     "citations_are_valid",

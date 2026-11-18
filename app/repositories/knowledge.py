@@ -8,7 +8,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database.models import KnowledgeChunk
 from app.knowledge.chunking import KnowledgeDraft
 
-
 CURATED_CONTENT_TYPES = ("faq", "policy", "manual")
 
 
@@ -268,7 +267,15 @@ class KnowledgeRepository:
         await self._session.flush()
         if link_neighbors:
             for index, row in enumerate(rows):
-                row.prev_chunk_id = rows[index - 1].id if index else None
-                row.next_chunk_id = rows[index + 1].id if index + 1 < len(rows) else None
+                row.prev_chunk_id = (
+                    rows[index - 1].id
+                    if index and rows[index - 1].section_path == row.section_path
+                    else None
+                )
+                row.next_chunk_id = (
+                    rows[index + 1].id
+                    if index + 1 < len(rows) and rows[index + 1].section_path == row.section_path
+                    else None
+                )
             await self._session.flush()
         return rows

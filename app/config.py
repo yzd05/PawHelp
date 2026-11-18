@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     database_url: SecretStr
     shop_name: str = "本店"
     model_timeout_seconds: PositiveInt = 60
+    fast_model_timeout_seconds: float = Field(default=15.0, gt=0)
+    workflow_turn_timeout_seconds: float = Field(default=90.0, gt=0)
+    db_pool_size: int = Field(default=10, ge=1)
+    db_max_overflow: int = Field(default=20, ge=0)
+    db_pool_recycle_seconds: int = Field(default=1800, ge=60)
     context_token_budget: PositiveInt = 4096
     model_max_output_tokens: PositiveInt = Field(default=1024, validation_alias=AliasChoices("MAX_OUTPUT_TOKENS", "MODEL_MAX_OUTPUT_TOKENS"))
     model_context_window: int = Field(default=0, ge=0)

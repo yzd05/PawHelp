@@ -2,21 +2,31 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
-from datetime import datetime, timezone
 import json
 import logging
 import re
+from dataclasses import replace
+from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
 from jsonschema import Draft202012Validator
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import (
+    AIMessage,
+    BaseMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
 from langgraph.config import get_stream_writer
 from langgraph.types import interrupt
 
 from app.chat import text_from_chunk
-from app.services.tool_chat import _KNOWLEDGE_REFUSAL, _KNOWLEDGE_REFUSAL_ACTIONS, citations_are_valid
+from app.services.tool_chat import (
+    _KNOWLEDGE_REFUSAL,
+    _KNOWLEDGE_REFUSAL_ACTIONS,
+    citations_are_valid,
+)
 from app.tools.business import build_business_tools
 from app.tools.executor import ToolExecutor
 from app.tools.registry import ToolRegistry, UnknownToolError
@@ -160,7 +170,7 @@ class ToolAgentNodes:
                 "standalone_question": state["question"],
                 "summary_background": history_summary,
                 "retrieved_evidence_untrusted": state.get("evidence", []) if knowledge else [],
-                "current_utc": datetime.now(timezone.utc).isoformat(),
+                "current_utc": datetime.now(UTC).isoformat(),
                 "customer_timezone": "Asia/Hong_Kong",
             }
             # The bound order was already queried this turn: show it as that tool call, or the model repeats it.
@@ -281,6 +291,7 @@ class ToolAgentNodes:
                 ]
                 return {
                     "agent_reminders": state.get("agent_reminders", 0) + 1,
+                    "agent_steps": steps + 1,
                     "agent_next": "agent",
                     **telemetry,
                 }

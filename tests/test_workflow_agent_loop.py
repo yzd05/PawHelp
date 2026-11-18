@@ -3,7 +3,7 @@
 import pytest
 from langchain_core.messages import AIMessage, AIMessageChunk, ToolMessage
 
-from tests.workflow_fakes import LabelledModel, run_example, tool_call
+from tests.workflow_fakes import run_example, tool_call
 
 
 @pytest.mark.parametrize("intent,route", [
@@ -14,18 +14,19 @@ from tests.workflow_fakes import LabelledModel, run_example, tool_call
 async def test_seven_labelled_intents_use_the_required_four_routes(intent, route):
     outputs = ["有据可查。[1]"] if route in {"knowledge", "order_knowledge"} else ["您好"] if route == "business" else []
     question = f"{intent}订单1001" if route == "order_knowledge" else intent
-    service, model, search, events = await run_example(intent, question, outputs)
+    _, model, search, events = await run_example(intent, question, outputs)
     assert events[-1].name == "done"
     assert model.classifier_calls == 1
     assert len(search.calls) == (1 if route in {"knowledge", "order_knowledge"} else 0)
     assert model.agent_calls == (1 if route in {"business", "knowledge", "order_knowledge"} else 0)
-    if model.agent_calls: assert "create_ticket" in model.tool_names
+    if model.agent_calls:
+        assert "create_ticket" in model.tool_names
     if intent in {"退款退货", "售后"}:
-        assert search.calls[0]["content_types"] == ("policy",)
+        assert "content_types" not in search.calls[0]
 
 
 async def test_weak_knowledge_is_logged_and_blocked_before_agent():
-    service, model, search, events = await run_example("商品咨询", "商品有没有保修", confident=False)
+    service, model, _, events = await run_example("商品咨询", "商品有没有保修", confident=False)
     assert model.agent_calls == 0
     assert service.low_confidence == ["retrieval_low_conf"]
     assert "不会猜测" in events[-1].data["content"]
@@ -38,7 +39,7 @@ async def test_order_then_logistics_requires_two_agent_tool_steps():
         tool_call("query_logistics", '{"order_id":"1001"}', "logistics-1"),
         "订单已查询，包裹正在运输中。",
     ]
-    service, model, search, events = await run_example("物流", "先查订单1001再查物流", outputs)
+    _, model, _, events = await run_example("物流", "先查订单1001再查物流", outputs)
     assert model.agent_calls == 3
     assert [event.data["status"] for event in events if event.name == "tool_status"] == [
         "running", "succeeded", "running", "succeeded"
@@ -133,14 +134,14 @@ async def test_repeated_calls_to_the_same_tool_keep_distinct_executions():
 
 
 async def test_complaint_only_suggests_independent_actions_without_creating_ticket():
-    service, model, search, events = await run_example("投诉", "我要投诉")
+    service, model, _, events = await run_example("投诉", "我要投诉")
     assert model.agent_calls == 0
     assert events[-1].data["suggested_actions"] == ["转人工", "建工单"]
     assert not any(item[0] == "tool_call" for item in service.saved)
 
 
 async def test_agent_may_suggest_one_action_without_creating_ticket():
-    service, model, search, events = await run_example(
+    service, _, _, events = await run_example(
         "人工", "请人工帮我核查订单", ["我可以帮您转人工。\n[建议选项:转人工]"]
     )
     assert events[-1].data["suggested_actions"] == ["转人工"]
@@ -150,7 +151,7 @@ async def test_agent_may_suggest_one_action_without_creating_ticket():
 
 async def test_bare_loop_stops_at_three_tool_calls_without_a_fourth_execution():
     outputs = [tool_call("query_order", '{"order_id":"1001"}', f"order-{i}") for i in range(4)]
-    service, model, search, events = await run_example("订单", "继续核查订单1001", outputs)
+    _, model, _, events = await run_example("订单", "继续核查订单1001", outputs)
     assert model.agent_calls == 4
     assert sum(item["status"] == "succeeded" for item in events[-1].data["tool_trace"]) == 3
     assert events[-1].data["tool_trace"][-1]["status"] == "failed"

@@ -3,16 +3,23 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager, suppress
 import json
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from random import Random
 from typing import Annotated, Any, TypedDict
 from weakref import WeakValueDictionary
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, RemoveMessage, SystemMessage, ToolMessage
+from langchain_core.messages import (
+    AIMessage,
+    BaseMessage,
+    HumanMessage,
+    RemoveMessage,
+    SystemMessage,
+    ToolMessage,
+)
 from langchain_core.messages.utils import count_tokens_approximately
 from langchain_core.utils.function_calling import convert_to_openai_tool
 from langchain_openai import ChatOpenAI
@@ -57,7 +64,13 @@ from app.tools.business import ToolRuntime, build_business_tools
 from app.tools.catalog import ToolCatalog
 from app.tools.registry import ToolRegistry
 from app.workflow.memory import ConversationMemory
-from app.workflow.nodes import TurnNodes, after_agent, after_confidence_gate, after_route, after_select_order
+from app.workflow.nodes import (
+    TurnNodes,
+    after_agent,
+    after_confidence_gate,
+    after_route,
+    after_select_order,
+)
 from app.workflow.titles import ConversationTitles
 from app.workflow.tool_agent import ToolAgentNodes, ticket_requested
 from app.workflow.understanding import Intent, Route
@@ -574,45 +587,54 @@ class WorkflowChatService:
         record: dict[str, Any],
     ) -> AsyncIterator[ChatEvent]:
         config = {"configurable": {"thread_id": f"{turn.user_id}:{turn.conversation_id}"}}
+        turn_timeout = getattr(self._settings, "workflow_turn_timeout_seconds", 90.0)
         try:
-            async for item in graph.astream(
-                graph_input,
-                config={
-                    **config,
-                    "recursion_limit": 50,
-                    "callbacks": record["callbacks"],
-                    "metadata": {
-                        "conversation_id": turn.conversation_id,
-                        "user_message_id": turn.user_message_id,
+            async with asyncio.timeout(turn_timeout):
+                async for item in graph.astream(
+                    graph_input,
+                    config={
+                        **config,
+                        "recursion_limit": 50,
+                        "callbacks": record["callbacks"],
+                        "metadata": {
+                            "conversation_id": turn.conversation_id,
+                            "user_message_id": turn.user_message_id,
+                        },
                     },
-                },
-                stream_mode="custom",
-                durability="sync",
-            ):
-                if isinstance(item, dict) and isinstance(item.get("name"), str):
-                    yield ChatEvent(item["name"], item.get("data", {}))
-            snapshot = await graph.aget_state(config)
-            finish_trace(record, snapshot.values)
-            if snapshot.tasks:
-                record["status"] = "interrupted"
-            if turn.layered_context and not snapshot.tasks and snapshot.values.get("message_id"):
-                memory = nodes.memory
-                view = await memory.prepare(
-                    turn.conversation_id,
-                    turn.user_id,
-                    snapshot.values["messages"],
-                    snapshot.values["user_message_id"],
-                )
-                memory.schedule(turn.conversation_id, turn.user_id, view)
-            # Greetings make poor titles; wait for the first substantive question.
-            if not snapshot.tasks and snapshot.values.get("message_id") and snapshot.values.get("intent") != "闲聊":
-                self._titles.schedule(turn.conversation_id, turn.user_id, snapshot.values["raw_question"])
-            for task in snapshot.tasks:
-                for pending in task.interrupts:
-                    if isinstance(pending.value, dict) and pending.value.get("kind") == "select_order":
-                        yield ChatEvent("order_selection", pending.value)
-                    elif isinstance(pending.value, dict) and pending.value.get("kind") == "confirm_ticket":
-                        yield ChatEvent("ticket_confirmation", pending.value)
+                    stream_mode="custom",
+                    durability="sync",
+                ):
+                    if isinstance(item, dict) and isinstance(item.get("name"), str):
+                        yield ChatEvent(item["name"], item.get("data", {}))
+                snapshot = await graph.aget_state(config)
+                finish_trace(record, snapshot.values)
+                if snapshot.tasks:
+                    record["status"] = "interrupted"
+                if turn.layered_context and not snapshot.tasks and snapshot.values.get("message_id"):
+                    memory = nodes.memory
+                    view = await memory.prepare(
+                        turn.conversation_id,
+                        turn.user_id,
+                        snapshot.values["messages"],
+                        snapshot.values["user_message_id"],
+                    )
+                    memory.schedule(turn.conversation_id, turn.user_id, view)
+                # Greetings make poor titles; wait for the first substantive question.
+                if not snapshot.tasks and snapshot.values.get("message_id") and snapshot.values.get("intent") != "闲聊":
+                    self._titles.schedule(turn.conversation_id, turn.user_id, snapshot.values["raw_question"])
+                for task in snapshot.tasks:
+                    for pending in task.interrupts:
+                        if isinstance(pending.value, dict) and pending.value.get("kind") == "select_order":
+                            yield ChatEvent("order_selection", pending.value)
+                        elif isinstance(pending.value, dict) and pending.value.get("kind") == "confirm_ticket":
+                            yield ChatEvent("ticket_confirmation", pending.value)
+        except TimeoutError:
+            logger.warning(
+                "workflow turn timed out after %ss conversation=%s",
+                turn_timeout,
+                turn.conversation_id,
+            )
+            yield self._error_event(turn, code="workflow_timeout", message="客服响应超时，请稍后重试")
         except asyncio.CancelledError:
             raise
         except Exception:

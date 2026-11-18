@@ -15,7 +15,7 @@ async def test_multiturn_logistics_refund_logistics_and_query_fanout_dedup():
     assert second[-1].name == "done"
     assert any(kind == "IntentDecision" and q == "订单1001的猫爬架能退吗" for kind, q in model.structured)
     assert len(search.queries) == 3  # original + two unique expansions
-    assert all(kwargs["content_types"] == ("policy",) for _, kwargs in search.queries)
+    assert all("content_types" not in kwargs for _, kwargs in search.queries)
     assert len(second[-1].data["sources"]) == 1  # same chunk across queries
     assert [item["name"] for item in second[-1].data["tool_trace"]] == ["query_order"]
     third = [event async for event in service.stream_turn(turn("再看订单1001的物流"))]

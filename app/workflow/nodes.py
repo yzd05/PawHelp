@@ -11,7 +11,13 @@ import re
 from typing import Any
 from uuid import uuid4
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import (
+    AIMessage,
+    BaseMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
 from langgraph.config import get_stream_writer
 from langgraph.types import interrupt
 
@@ -20,9 +26,9 @@ from app.knowledge.search import RetrievalStrategy
 from app.observability import record_intent
 from app.repositories.orders import OrderNotFound
 from app.services.tool_chat import (
-    PreparedTurn,
     _KNOWLEDGE_REFUSAL,
     _KNOWLEDGE_REFUSAL_ACTIONS,
+    PreparedTurn,
     build_done_event,
 )
 from app.tools.executor import ToolExecutor
@@ -369,7 +375,6 @@ class TurnNodes:
         }
         queries = [state["question"]]
         if state["intent"] in _POLICY_INTENTS:
-            kwargs["content_types"] = ("policy",)
             queries = await self._policy_queries(state)
         retrieval = await service._evidence_pipeline.retrieve(state["question"], extra_queries=queries, **kwargs)
         matches = retrieval.result.matches
@@ -459,9 +464,7 @@ class TurnNodes:
         )
         writer = get_stream_writer()
         # Agent answers were already streamed; fixed replies and refusals were not.
-        if state["route"] not in {"business", "knowledge", "order_knowledge"}:
-            writer({"name": "token", "data": {"content": answer}})
-        elif state["route"] in {"knowledge", "order_knowledge"} and not state.get("confident", False):
+        if state["route"] not in {"business", "knowledge", "order_knowledge"} or state["route"] in {"knowledge", "order_knowledge"} and not state.get("confident", False):
             writer({"name": "token", "data": {"content": answer}})
         done = build_done_event(
             turn,

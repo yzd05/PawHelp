@@ -5,7 +5,6 @@ from collections.abc import Sequence
 from langchain_core.messages import BaseMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
-
 CUSTOMER_SERVICE_SYSTEM_TEMPLATE = """You are the customer-service representative for {shop_name}, an e-commerce shop.
 
 Follow these rules:
@@ -63,7 +62,7 @@ AFTER_SALES_EXTRACTION_PROMPT = ChatPromptTemplate.from_messages(
 CONVERSATION_KNOWLEDGE_EXTRACTION_SYSTEM_TEMPLATE = """Extract reusable customer-service question and answer pairs from the supplied conversation batch.
 
 Rules:
-0. Return exactly one JSON object with an items array and no additional text.
+0. Return exactly one JSON object matching {{items: [{{source_conversation_id, question, answer}}]}} and no additional text.
 1. Return only pairs whose answer is explicitly supported by an assistant message in the same conversation.
 2. Preserve the customer's real question wording; do not replace it with generic keywords.
 3. Exclude greetings, unresolved questions, personal data, order-specific status, tool payloads, and promises of actions.

@@ -11,10 +11,15 @@ import json
 import logging
 import time
 from collections.abc import Sequence
+from contextlib import suppress
 from pathlib import Path
 from typing import Protocol
 
-from app.knowledge.evidence import EvidenceSufficiencyChecker, JudgedDecision, evidence_payload
+from app.knowledge.evidence import (
+    EvidenceSufficiencyChecker,
+    JudgedDecision,
+    evidence_payload,
+)
 
 JEV_QUESTION = "sufficient"
 JEV_EVIDENCE_INSTRUCTIONS = (
@@ -53,7 +58,7 @@ class JevEvidenceJudge:
             return {"p_yes": p_yes, "model": str(response.model),
                     "latency_ms": round((time.perf_counter() - started) * 1000),
                     "input_tokens": getattr(usage, "input_tokens", None)}
-        except Exception as error:  # Jev is optional: any failure hands the decision to the LLM.
+        except Exception as error:  # noqa: BLE001
             return {"error": type(error).__name__, "latency_ms": round((time.perf_counter() - started) * 1000)}
 
 
@@ -97,15 +102,25 @@ class JevRoutedChecker:
             self._bounds_cache = (mtime, load_jev_bounds(self.calibration_path, self.judge.model))
         return self._bounds_cache[1]
 
-    async def _llm_with_shadow(self, question, evidence, note=None) -> JudgedDecision:
+    async def _llm_with_shadow(
+        self,
+        question: str,
+        evidence: Sequence[dict[str, object]],
+        note: str | None = None,
+    ) -> JudgedDecision:
         """The LLM decides; Jev is recorded only if it finishes first, so it never adds latency."""
         jev_task = asyncio.create_task(self.judge.judge(question, evidence))
-        decision = await self.llm.check(question, evidence)
-        if jev_task.done():
-            jev = jev_task.result()
-        else:
-            jev_task.cancel()
-            jev = {"error": "SlowerThanLlm"}
+        try:
+            decision = await self.llm.check(question, evidence)
+            if jev_task.done():
+                jev = jev_task.result()
+            else:
+                jev = {"error": "SlowerThanLlm"}
+        finally:
+            if not jev_task.done():
+                jev_task.cancel()
+            with suppress(asyncio.CancelledError, Exception):
+                await jev_task
         if note:
             jev = {**jev, "calibration": note}
         return JudgedDecision(**decision.model_dump(), jev=jev)

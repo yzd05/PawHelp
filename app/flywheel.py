@@ -1,26 +1,40 @@
 """Problem ingestion, exact-turn feedback, atomic dedup and recoverable publication."""
+
 import asyncio
 import hashlib
+import inspect
 import json
 import logging
-from datetime import timezone
+import re
+from collections.abc import Awaitable, Callable, Sequence
+from datetime import UTC
+from typing import Any
 
-from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.exceptions import OutputParserException
+from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field, ValidationError
-from sqlalchemy import select, func
-from app.database.models import LowConfidenceQuestion, ReviewQueue, Message, KnowledgeChunk
-from app.repositories.conversations import ConversationRepository
-from app.repositories.quality import QualityRepository
-from app.repositories.knowledge import KnowledgeRepository
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.database.models import (
+    KnowledgeChunk,
+    LowConfidenceQuestion,
+    Message,
+    ReviewQueue,
+)
 from app.knowledge.chunking import KnowledgeDraft
 from app.knowledge.vector_store import MAX_SECTION_PATH_BYTES, MAX_TEXT_BYTES
+from app.repositories.conversations import ConversationRepository
+from app.repositories.knowledge import KnowledgeRepository
+from app.repositories.quality import QualityRepository
 
 logger = logging.getLogger(__name__)
 
 FLYWHEEL_CATEGORY = "人工核准 FAQ"
 MAX_SECTION_PATH_CHARS = 512
 MAX_APPROVED_ANSWER_BYTES = 60000
+_ALNUM_TOKEN = re.compile(r"[a-z0-9]+")
+_NON_WORD = re.compile(r"[^\w]+", flags=re.UNICODE)
 
 
 def _truncate_utf8(value: str, *, max_chars: int, max_bytes: int) -> str:
@@ -106,10 +120,71 @@ def readable_reason(reason):
     return text
 
 
-def queue_fingerprint(rows):
-    return hashlib.sha256(json.dumps(
-        [(r.id, r.normalized_question, r.review_status) for r in rows], ensure_ascii=False,
-    ).encode()).hexdigest()
+def queue_fingerprint(rows: Sequence[ReviewQueue]) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            [(r.id, r.normalized_question, r.review_status) for r in rows],
+            ensure_ascii=False,
+        ).encode()
+    ).hexdigest()
+
+
+def _normalized_features(text: str) -> tuple[str, set[str], set[str], set[str]]:
+    lowered = text.casefold()
+    cleaned = _NON_WORD.sub("", lowered)
+    unigrams = set(cleaned)
+    if len(cleaned) < 2:
+        bigrams = {cleaned} if cleaned else set()
+    else:
+        bigrams = {cleaned[index : index + 2] for index in range(len(cleaned) - 1)}
+    tokens = set(_ALNUM_TOKEN.findall(lowered))
+    return cleaned, unigrams, bigrams, tokens
+
+
+def _dice_similarity(left: set[str], right: set[str]) -> float:
+    if not left or not right:
+        return 0.0
+    return (2.0 * len(left & right)) / (len(left) + len(right))
+
+
+def question_similarity(raw_question: str, candidate_question: str) -> float:
+    """Normalized lexical overlap across CJK n-grams, SKU/model tokens and substrings."""
+
+    q_clean, q_uni, q_bi, q_tok = _normalized_features(raw_question)
+    c_clean, c_uni, c_bi, c_tok = _normalized_features(candidate_question)
+    if not q_clean or not c_clean:
+        return 0.0
+    if q_clean == c_clean:
+        return 1.0
+    substring = 1.0 if (q_clean in c_clean or c_clean in q_clean) else 0.0
+    bigram = _dice_similarity(q_bi, c_bi)
+    unigram = _dice_similarity(q_uni, c_uni)
+    token = _dice_similarity(q_tok, c_tok)
+    if q_tok and c_tok:
+        return 0.40 * bigram + 0.20 * unigram + 0.30 * token + 0.10 * substring
+    return 0.55 * bigram + 0.35 * unigram + 0.10 * substring
+
+
+def select_candidate_window(
+    raw_question: str,
+    candidates: Sequence[ReviewQueue],
+    limit: int,
+) -> list[ReviewQueue]:
+    """Select at most ``limit`` closest candidates when ReviewQueue outgrows the prompt budget."""
+
+    if len(candidates) <= limit:
+        return list(candidates)
+    ranked = sorted(
+        candidates,
+        key=lambda row: (
+            question_similarity(raw_question, row.normalized_question or ""),
+            int(row.occurrence_count or 0),
+            int(row.id or 0),
+        ),
+        reverse=True,
+    )
+    selected = ranked[:limit]
+    return sorted(selected, key=lambda row: int(row.id or 0))
 
 
 def _live_chunk(chunk: KnowledgeChunk | None) -> KnowledgeChunk | None:
@@ -118,115 +193,255 @@ def _live_chunk(chunk: KnowledgeChunk | None) -> KnowledgeChunk | None:
     return chunk
 
 
-def review_view(row, chunk=None):
+def review_view(row: ReviewQueue, chunk: KnowledgeChunk | None = None) -> dict[str, Any]:
     live = _live_chunk(chunk)
-    return {"id": row.id, "normalized_question": row.normalized_question,
-            "ai_suggested_answer": row.ai_suggested_answer,
-            "occurrence_count": row.occurrence_count, "review_status": row.review_status,
-            "approved_answer": row.approved_answer,
-            "published_chunk_id": live.id if live is not None else row.published_chunk_id,
-            "publication_status": "已同步" if live and live.vectorize_status == "done"
-                                  else "待同步" if row.review_status == "通过" else "未核准",
-            "publication_error": row.publication_error,
-            "created_at": row.created_at.replace(tzinfo=timezone.utc).isoformat() if row.created_at else None}
+    return {
+        "id": row.id,
+        "normalized_question": row.normalized_question,
+        "ai_suggested_answer": row.ai_suggested_answer,
+        "occurrence_count": row.occurrence_count,
+        "review_status": row.review_status,
+        "approved_answer": row.approved_answer,
+        "published_chunk_id": live.id if live is not None else row.published_chunk_id,
+        "publication_status": (
+            "已同步"
+            if live and live.vectorize_status == "done"
+            else "待同步"
+            if row.review_status == "通过"
+            else "未核准"
+        ),
+        "publication_error": row.publication_error,
+        "created_at": row.created_at.replace(tzinfo=UTC).isoformat() if row.created_at else None,
+    }
+
+
+CommitHook = Callable[[AsyncSession, LowConfidenceQuestion, ReviewQueue], Awaitable[None] | None]
 
 
 class Flywheel:
-    def __init__(self, settings, sessions, model, knowledge):
+    def __init__(
+        self,
+        settings: Any,
+        sessions: Any,
+        model: Any,
+        knowledge: Any,
+        *,
+        pool_filter: Any = None,
+        review_filter: Any = None,
+        before_commit: CommitHook | None = None,
+    ) -> None:
         if getattr(model, "max_retries", 0) != 0:
-            raise ValueError("Flywheel requires a model constructed with max_retries=0; "
-                             "hidden SDK retries exceed the batch budget")
-        self.settings, self.sessions, self.model, self.knowledge = settings, sessions, model, knowledge
+            raise ValueError(
+                "Flywheel requires a model constructed with max_retries=0; "
+                "hidden SDK retries exceed the batch budget"
+            )
+        self.settings = settings
+        self.sessions = sessions
+        self.model = model
+        self.knowledge = knowledge
+        self.pool_filter = pool_filter
+        self.review_filter = review_filter
+        self.before_commit = before_commit
         self.lock = asyncio.Lock()
 
-    async def feedback(self, conversation_id, message_id, user_id, vote):
-        if vote not in {"up", "down"}: raise ValueError("无效反馈")
+    def _scope_pool(self, statement: Any) -> Any:
+        if self.pool_filter is None:
+            return statement
+        if callable(self.pool_filter):
+            return self.pool_filter(statement)
+        return statement.where(self.pool_filter)
+
+    def _scope_reviews(self, statement: Any) -> Any:
+        if self.review_filter is None:
+            return statement
+        if callable(self.review_filter):
+            return self.review_filter(statement)
+        return statement.where(self.review_filter)
+
+    async def feedback(self, conversation_id: int, message_id: int, user_id: str, vote: str) -> dict[str, Any]:
+        if vote not in {"up", "down"}:
+            raise ValueError("无效反馈")
         async with self.sessions() as session, session.begin():
             await ConversationRepository(session).get_owned(conversation_id, user_id)
-            message = await session.scalar(select(Message).where(
-                Message.id == message_id, Message.conversation_id == conversation_id, Message.role == "assistant",
-            ).with_for_update())
-            if message is None or message.tool_calls: raise LookupError("回答不存在")
+            message = await session.scalar(
+                select(Message)
+                .where(
+                    Message.id == message_id,
+                    Message.conversation_id == conversation_id,
+                    Message.role == "assistant",
+                )
+                .with_for_update()
+            )
+            if message is None or message.tool_calls:
+                raise LookupError("回答不存在")
             if message.feedback:
                 return {"feedback": message.feedback, "already_recorded": True}
-            question = await session.scalar(select(Message).where(
-                Message.id == message.reply_to_message_id, Message.conversation_id == conversation_id,
-                Message.role == "user",
-            )) if message.reply_to_message_id else None
+            question = (
+                await session.scalar(
+                    select(Message).where(
+                        Message.id == message.reply_to_message_id,
+                        Message.conversation_id == conversation_id,
+                        Message.role == "user",
+                    )
+                )
+                if message.reply_to_message_id
+                else None
+            )
             if question is None:
                 # Legacy messages: exact preceding user record, never the latest question.
-                question = await session.scalar(select(Message).where(
-                    Message.conversation_id == conversation_id, Message.role == "user", Message.id < message.id,
-                ).order_by(Message.id.desc()).limit(1))
-            if question is None: raise LookupError("无法定位这条回答的原问题")
+                question = await session.scalar(
+                    select(Message)
+                    .where(
+                        Message.conversation_id == conversation_id,
+                        Message.role == "user",
+                        Message.id < message.id,
+                    )
+                    .order_by(Message.id.desc())
+                    .limit(1)
+                )
+            if question is None:
+                raise LookupError("无法定位这条回答的原问题")
             message.feedback = vote
             if vote == "down":
                 reason = "用户反馈未解决"
                 snapshot = message.retrieved_chunks
                 if snapshot is None:
-                    tools = list(await session.scalars(select(Message).where(
-                        Message.conversation_id == conversation_id, Message.role == "tool",
-                        Message.id > question.id, Message.id < message.id,
-                    ).order_by(Message.id)))
+                    tools = list(
+                        await session.scalars(
+                            select(Message)
+                            .where(
+                                Message.conversation_id == conversation_id,
+                                Message.role == "tool",
+                                Message.id > question.id,
+                                Message.id < message.id,
+                            )
+                            .order_by(Message.id)
+                        )
+                    )
                     for tool in tools:
                         try:
                             payload = json.loads(tool.content or "{}")
                             matches = payload.get("matches") if isinstance(payload, dict) else None
-                            if isinstance(matches, list) and all(isinstance(item, dict) and "answer" in item
-                                                                 for item in matches):
-                                snapshot = matches[:self.settings.observation_snapshot_limit]
+                            if isinstance(matches, list) and all(
+                                isinstance(item, dict) and "answer" in item for item in matches
+                            ):
+                                snapshot = matches[: self.settings.observation_snapshot_limit]
                         except (ValueError, TypeError):
                             continue
                 if snapshot is None and message.source_refs:
                     reason += "；旧回答未保存召回快照，不能以当前知识库伪造历史证据"
                 await QualityRepository(session).add_low_confidence(
-                    conversation_id=conversation_id, raw_question=question.content or "", source="user_feedback",
-                    reason=reason, retrieved_chunks=snapshot, event_key=f"feedback:{message_id}")
+                    conversation_id=conversation_id,
+                    raw_question=question.content or "",
+                    source="user_feedback",
+                    reason=reason,
+                    retrieved_chunks=snapshot,
+                    event_key=f"feedback:{message_id}",
+                )
             return {"feedback": vote, "already_recorded": False}
 
-    async def process(self):
-        if self.lock.locked(): raise ValueError("标准化任务正在执行")
+    async def process(self) -> dict[str, Any]:
+        if self.lock.locked():
+            raise ValueError("标准化任务正在执行")
         async with self.lock:
             async with self.sessions() as session:
-                ids = list(await session.scalars(
-                    select(LowConfidenceQuestion.id).where(LowConfidenceQuestion.matched_review_id.is_(None))
-                    .order_by(LowConfidenceQuestion.id).limit(self.settings.flywheel_batch_size)))
-            counts = {"processed": 0, "created": 0, "merged": 0, "failed": 0, "deferred": 0,
-                      "max_model_calls": len(ids), "errors": []}
+                pool_query = (
+                    self._scope_pool(
+                        select(LowConfidenceQuestion.id).where(
+                            LowConfidenceQuestion.matched_review_id.is_(None)
+                        )
+                    )
+                    .order_by(LowConfidenceQuestion.id)
+                    .limit(self.settings.flywheel_batch_size)
+                )
+                ids = list(await session.scalars(pool_query))
+            counts: dict[str, Any] = {
+                "processed": 0,
+                "created": 0,
+                "merged": 0,
+                "failed": 0,
+                "deferred": 0,
+                "max_model_calls": len(ids),
+                "errors": [],
+            }
             for pool_id in ids:
                 try:
                     async with self.sessions() as session:
                         raw = await session.get(LowConfidenceQuestion, pool_id)
-                        if raw is None or raw.matched_review_id is not None: continue
-                        candidates = list(await session.scalars(select(ReviewQueue).order_by(ReviewQueue.id)))
-                    if len(candidates) > self.settings.flywheel_candidate_limit:
-                        raise ValueError("去重候选（含已审核）超过预算；需提高受模型窗口约束的候选预算或人工处理，不静默截断")
-                    version = queue_fingerprint(candidates)
-                    payload = {"raw_question": raw.raw_question, "evidence_snapshot": raw.retrieved_chunks,
-                               "pending_candidates": [{"id": r.id, "question": r.normalized_question,
-                                                       "review_status": r.review_status} for r in candidates]}
-                    # Persist full evidence for humans; the normalizer gets a bounded view.
-                    payload["evidence_snapshot"] = [{**chunk, "answer": str(chunk.get("answer", ""))[:1200]}
-                                                    for chunk in (raw.retrieved_chunks or [])]
-                    messages = [SystemMessage(content=normalization_prompt()),
-                                HumanMessage(content=json.dumps(payload, ensure_ascii=False))]
-                    input_tokens = (sum(len(message.content) for message in messages)
-                                    / self.settings.context_chars_per_token)
-                    if (input_tokens + self.settings.model_max_output_tokens
-                            > (self.settings.model_context_window or 32000)):
+                        if raw is None or raw.matched_review_id is not None:
+                            continue
+                        all_candidates = list(
+                            await session.scalars(
+                                self._scope_reviews(select(ReviewQueue)).order_by(ReviewQueue.id)
+                            )
+                        )
+                    limit = self.settings.flywheel_candidate_limit
+                    if len(all_candidates) > limit:
+                        candidates = select_candidate_window(raw.raw_question, all_candidates, limit)
+                        logger.info(
+                            "flywheel prefiltered candidates total=%s selected=%s limit=%s pool_id=%s",
+                            len(all_candidates),
+                            len(candidates),
+                            limit,
+                            pool_id,
+                        )
+                    else:
+                        candidates = all_candidates
+                    version = queue_fingerprint(all_candidates)
+                    payload = {
+                        "raw_question": raw.raw_question,
+                        "evidence_snapshot": [
+                            {**chunk, "answer": str(chunk.get("answer", ""))[:1200]}
+                            for chunk in (raw.retrieved_chunks or [])
+                        ],
+                        "pending_candidates": [
+                            {
+                                "id": r.id,
+                                "question": r.normalized_question,
+                                "review_status": r.review_status,
+                            }
+                            for r in candidates
+                        ],
+                    }
+                    messages = [
+                        SystemMessage(content=normalization_prompt()),
+                        HumanMessage(content=json.dumps(payload, ensure_ascii=False)),
+                    ]
+                    input_tokens = (
+                        sum(len(message.content) for message in messages)
+                        / self.settings.context_chars_per_token
+                    )
+                    if (
+                        input_tokens + self.settings.model_max_output_tokens
+                        > (self.settings.model_context_window or 32000)
+                    ):
                         raise ValueError("标准化输入超过模型预算，保留问题等待人工处理")
                     result = await self.model.with_structured_output(
-                        NormalizedGap, method=self.settings.structured_output_method).ainvoke(messages)
+                        NormalizedGap,
+                        method=self.settings.structured_output_method,
+                    ).ainvoke(messages)
                     gap = NormalizedGap.model_validate(result)
-                    if not gap.normalized_question.strip(): raise ValueError("空标准问题")
-                    if gap.matched_review_id is not None and gap.matched_review_id not in {r.id for r in candidates}:
+                    if not gap.normalized_question.strip():
+                        raise ValueError("空标准问题")
+                    if gap.matched_review_id is not None and gap.matched_review_id not in {
+                        r.id for r in candidates
+                    }:
                         raise ValueError("模型返回了不存在的候选 ID")
                     async with self.sessions() as session, session.begin():
-                        current = list(await session.scalars(
-                            select(ReviewQueue).order_by(ReviewQueue.id).with_for_update()))
-                        row = await session.scalar(select(LowConfidenceQuestion)
-                                                   .where(LowConfidenceQuestion.id == pool_id).with_for_update())
-                        if row is None or row.matched_review_id is not None: continue
+                        current = list(
+                            await session.scalars(
+                                self._scope_reviews(select(ReviewQueue))
+                                .order_by(ReviewQueue.id)
+                                .with_for_update()
+                            )
+                        )
+                        row = await session.scalar(
+                            select(LowConfidenceQuestion)
+                            .where(LowConfidenceQuestion.id == pool_id)
+                            .with_for_update()
+                        )
+                        if row is None or row.matched_review_id is not None:
+                            continue
                         if queue_fingerprint(current) != version:
                             counts["deferred"] += 1
                             continue
@@ -234,13 +449,20 @@ class Flywheel:
                         if matched:
                             matched.occurrence_count += 1
                         else:
-                            matched = ReviewQueue(normalized_question=gap.normalized_question.strip(),
-                                                  ai_suggested_answer=gap.ai_suggested_answer,
-                                                  occurrence_count=1, review_status="待审")
+                            matched = ReviewQueue(
+                                normalized_question=gap.normalized_question.strip(),
+                                ai_suggested_answer=gap.ai_suggested_answer,
+                                occurrence_count=1,
+                                review_status="待审",
+                            )
                             session.add(matched)
                             await session.flush()
                         row.matched_review_id = matched.id
                         outcome = "merged" if gap.matched_review_id is not None else "created"
+                        if self.before_commit is not None:
+                            hook_result = self.before_commit(session, row, matched)
+                            if inspect.isawaitable(hook_result):
+                                await hook_result
                     # begin() commits on exit; a failed commit must not report success.
                     counts["processed"] += 1
                     counts[outcome] += 1
@@ -250,35 +472,69 @@ class Flywheel:
                     counts["errors"].append(processing_failure(pool_id, error))
             return counts
 
-    async def list(self, status="待审", offset=0, sort="frequency"):
+    async def list(self, status: str = "待审", offset: int = 0, sort: str = "frequency") -> dict[str, Any]:
         async with self.sessions() as session:
-            query = (select(ReviewQueue).order_by(ReviewQueue.occurrence_count.desc(), ReviewQueue.id.desc())
-                     if sort == "frequency" else select(ReviewQueue).order_by(ReviewQueue.id.desc()))
-            if status != "全部": query = query.where(ReviewQueue.review_status == status)
+            base_query = self._scope_reviews(select(ReviewQueue))
+            query = (
+                base_query.order_by(ReviewQueue.occurrence_count.desc(), ReviewQueue.id.desc())
+                if sort == "frequency"
+                else base_query.order_by(ReviewQueue.id.desc())
+            )
+            if status != "全部":
+                query = query.where(ReviewQueue.review_status == status)
             rows = list(await session.scalars(query.offset(offset).limit(50)))
             chunk_ids = [r.published_chunk_id for r in rows if r.published_chunk_id]
             chunks = (
-                {r.id: r for r in await session.scalars(select(KnowledgeChunk).where(KnowledgeChunk.id.in_(chunk_ids)))}
-                if chunk_ids else {}
+                {
+                    r.id: r
+                    for r in await session.scalars(
+                        select(KnowledgeChunk).where(KnowledgeChunk.id.in_(chunk_ids))
+                    )
+                }
+                if chunk_ids
+                else {}
             )
-            pending = await session.scalar(select(func.count()).select_from(LowConfidenceQuestion)
-                                           .where(LowConfidenceQuestion.matched_review_id.is_(None)))
-            return {"items": [review_view(r, chunks.get(r.published_chunk_id)) for r in rows],
-                    "unprocessed": pending, "offset": offset}
+            pending = await session.scalar(
+                self._scope_pool(
+                    select(func.count())
+                    .select_from(LowConfidenceQuestion)
+                    .where(LowConfidenceQuestion.matched_review_id.is_(None))
+                )
+            )
+            return {
+                "items": [review_view(r, chunks.get(r.published_chunk_id)) for r in rows],
+                "unprocessed": pending,
+                "offset": offset,
+            }
 
-    async def detail(self, review_id):
+    async def detail(self, review_id: int) -> dict[str, Any]:
         async with self.sessions() as session:
             row = await session.get(ReviewQueue, review_id)
-            if row is None: raise LookupError("审核记录不存在")
-            originals = list(await session.scalars(
-                select(LowConfidenceQuestion).where(LowConfidenceQuestion.matched_review_id == review_id)
-                .order_by(LowConfidenceQuestion.id)))
+            if row is None:
+                raise LookupError("审核记录不存在")
+            originals = list(
+                await session.scalars(
+                    select(LowConfidenceQuestion)
+                    .where(LowConfidenceQuestion.matched_review_id == review_id)
+                    .order_by(LowConfidenceQuestion.id)
+                )
+            )
             chunk = await session.get(KnowledgeChunk, row.published_chunk_id) if row.published_chunk_id else None
-            return {**review_view(row, chunk), "originals": [
-                {"id": r.id, "raw_question": r.raw_question, "source": r.source, "reason": readable_reason(r.reason),
-                 "retrieved_chunks": r.retrieved_chunks, "conversation_id": r.conversation_id,
-                 "created_at": r.created_at.replace(tzinfo=timezone.utc).isoformat() if r.created_at else None}
-                for r in originals]}
+            return {
+                **review_view(row, chunk),
+                "originals": [
+                    {
+                        "id": r.id,
+                        "raw_question": r.raw_question,
+                        "source": r.source,
+                        "reason": readable_reason(r.reason),
+                        "retrieved_chunks": r.retrieved_chunks,
+                        "conversation_id": r.conversation_id,
+                        "created_at": r.created_at.replace(tzinfo=UTC).isoformat() if r.created_at else None,
+                    }
+                    for r in originals
+                ],
+            }
 
     @staticmethod
     async def _ensure_published_chunk(session, row: ReviewQueue, review_id: int) -> KnowledgeChunk:

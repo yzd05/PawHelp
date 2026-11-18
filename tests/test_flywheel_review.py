@@ -1,7 +1,7 @@
 """Flywheel normalization and review queue: captured provider output replay, no paid calls."""
 import json
-from datetime import datetime, timezone
 from collections import deque
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -11,14 +11,31 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from langchain_core.exceptions import OutputParserException
 from langchain_core.output_parsers import PydanticOutputParser
-from sqlalchemy import delete, select
-from sqlalchemy.ext.asyncio import AsyncSession, AsyncSessionTransaction, async_sessionmaker
+from sqlalchemy import (
+    JSON,
+    Column,
+    DateTime,
+    Integer,
+    MetaData,
+    String,
+    Table,
+    Text,
+    delete,
+    select,
+    text,
+)
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.api.operations import operations_router
 from app.database.models import LowConfidenceQuestion, ReviewQueue
-from app.flywheel import Flywheel, NormalizedGap, normalization_prompt, readable_reason
+from app.flywheel import (
+    Flywheel,
+    NormalizedGap,
+    normalization_prompt,
+    readable_reason,
+    select_candidate_window,
+)
 from tests.fakes import fake_settings as config
-
 
 # Field names captured from pool 51/52/53/60; prose shortened, structure retained.
 CAPTURED_OUTPUTS = [
@@ -92,7 +109,7 @@ class ReplayModel:
 
 
 @pytest_asyncio.fixture
-async def normalization_batch(mysql_session, monkeypatch):
+async def normalization_batch(mysql_session):
     """Scope every work/candidate query to disposable test rows, not user problems."""
     sessions = async_sessionmaker(mysql_session.bind, expire_on_commit=False)
     question = "test-output-contract-" + uuid4().hex
@@ -101,25 +118,24 @@ async def normalization_batch(mysql_session, monkeypatch):
         session.add_all(rows)
         await session.flush()
         ids = [row.id for row in rows]
-    real_scalars = AsyncSession.scalars
-
-    async def scoped_scalars(session, statement, *args, **kwargs):
-        column = statement.column_descriptions[0]
-        if column.get("name") == "id" and column.get("entity") is LowConfidenceQuestion:
-            statement = statement.where(LowConfidenceQuestion.id.in_(ids))
-        elif column.get("entity") is ReviewQueue:
-            statement = statement.where(ReviewQueue.normalized_question == question)
-        return await real_scalars(session, statement, *args, **kwargs)
-
-    monkeypatch.setattr(AsyncSession, "scalars", scoped_scalars)
     model = ReplayModel(question)
     settings = config(structured_output_method="json_mode")
-    flywheel = Flywheel(settings, sessions, model, None)
+    flywheel = Flywheel(
+        settings,
+        sessions,
+        model,
+        None,
+        pool_filter=LowConfidenceQuestion.id.in_(ids),
+        review_filter=ReviewQueue.normalized_question == question,
+    )
     app = FastAPI()
     app.include_router(operations_router(settings, sessions, flywheel, SimpleNamespace()))
     try:
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test",
-                               headers={"X-Admin-Token": "test-only-admin"}) as client:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+            headers={"X-Admin-Token": "test-only-admin"},
+        ) as client:
             yield client, flywheel, model, sessions, ids
     finally:
         async with sessions() as session, session.begin():
@@ -128,7 +144,7 @@ async def normalization_batch(mysql_session, monkeypatch):
 
 
 async def test_four_parse_failures_remain_unmatched_then_manual_rerun_merges(normalization_batch):
-    client, flywheel, model, sessions, ids = normalization_batch
+    client, _, model, sessions, ids = normalization_batch
     model.outputs.extend(CAPTURED_OUTPUTS)
     response = await client.post("/api/review/process")
     assert response.status_code == 200
@@ -191,7 +207,9 @@ async def test_reviewed_gap_merges_without_reopening_or_overwriting(normalizatio
     result = (await client.post("/api/review/process")).json()
     assert (result["processed"], result["created"], result["merged"], result["failed"]) == (4, 0, 4, 0)
     async with sessions() as session:
-        reviews = list(await session.scalars(select(ReviewQueue)))
+        reviews = list(
+            await session.scalars(select(ReviewQueue).where(ReviewQueue.normalized_question == model.question))
+        )
         assert len(reviews) == 1
         assert reviews[0].id == review_id and reviews[0].review_status == status
         assert reviews[0].occurrence_count == 6 and reviews[0].ai_suggested_answer == "原草稿"
@@ -219,7 +237,7 @@ async def test_frequency_order_status_filter_and_newest_option(normalization_bat
 
 
 async def test_originals_preserve_three_snapshot_states_and_utc_time(normalization_batch):
-    client, _, model, sessions, ids = normalization_batch
+    client, _, _, sessions, ids = normalization_batch
     result = (await client.post("/api/review/process")).json()
     assert (result["created"], result["merged"]) == (1, 3)
     snapshot = [{"question": "标题", "answer": "<script>不可信文本</script>", "score": .013,
@@ -232,7 +250,7 @@ async def test_originals_preserve_three_snapshot_states_and_utc_time(normalizati
             review_id = row.matched_review_id
     data = (await client.get(f"/api/review/{review_id}")).json()
     assert [row["retrieved_chunks"] for row in data["originals"]] == [None, [], snapshot, snapshot]
-    assert all(datetime.fromisoformat(row["created_at"]) == datetime(2026, 10, 12, 1, 2, 3, tzinfo=timezone.utc)
+    assert all(datetime.fromisoformat(row["created_at"]) == datetime(2026, 10, 12, 1, 2, 3, tzinfo=UTC)
                for row in data["originals"])
 
 
@@ -260,22 +278,17 @@ async def test_review_change_during_model_call_defers_stale_match(normalization_
         assert review.review_status == "驳回" and review.occurrence_count == 4
 
 
-async def test_commit_failure_does_not_increment_success_counts(normalization_batch, monkeypatch):
-    client, _, model, sessions, ids = normalization_batch
-    original_exit = AsyncSessionTransaction.__aexit__
+async def test_commit_failure_does_not_increment_success_counts(normalization_batch):
+    client, flywheel, model, sessions, ids = normalization_batch
     failed_once = False
 
-    async def fail_before_commit(transaction, exc_type, exc, tb):
+    def fail_before_commit(session, row, matched):
         nonlocal failed_once
-        changed = transaction.session.dirty
-        if exc_type is None and not failed_once and any(isinstance(row, LowConfidenceQuestion) and row.id in ids for row in changed):
+        if not failed_once and row.id in ids:
             failed_once = True
-            error = RuntimeError("test-only commit failure")
-            await original_exit(transaction, type(error), error, None)
-            raise error
-        return await original_exit(transaction, exc_type, exc, tb)
+            raise RuntimeError("test-only commit failure")
 
-    monkeypatch.setattr(AsyncSessionTransaction, "__aexit__", fail_before_commit)
+    flywheel.before_commit = fail_before_commit
     result = (await client.post("/api/review/process")).json()
     assert failed_once
     assert (result["processed"], result["created"], result["merged"], result["failed"]) == (3, 1, 2, 1)
@@ -283,3 +296,123 @@ async def test_commit_failure_does_not_increment_success_counts(normalization_ba
         assert (await session.get(LowConfidenceQuestion, ids[0])).matched_review_id is None
         review = await session.scalar(select(ReviewQueue).where(ReviewQueue.normalized_question == model.question))
         assert review.occurrence_count == 3
+
+
+@pytest.mark.asyncio
+async def test_flywheel_prefilters_over_100_candidates_and_supports_clean_hooks_offline() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    meta = MetaData()
+    Table(
+        "review_queue",
+        meta,
+        Column("id", Integer, primary_key=True),
+        Column("normalized_question", Text),
+        Column("ai_suggested_answer", Text),
+        Column("occurrence_count", Integer, server_default=text("1")),
+        Column("review_status", String, server_default=text("'待审'")),
+        Column("approved_answer", Text),
+        Column("published_chunk_id", Integer),
+        Column("publication_error", Text),
+        Column("created_at", DateTime, server_default=text("CURRENT_TIMESTAMP")),
+        Column("updated_at", DateTime, server_default=text("CURRENT_TIMESTAMP")),
+    )
+    Table(
+        "low_confidence_questions",
+        meta,
+        Column("id", Integer, primary_key=True),
+        Column("conversation_id", Integer),
+        Column("raw_question", Text),
+        Column("source", String),
+        Column("reason", Text),
+        Column("retrieved_chunks", JSON),
+        Column("matched_review_id", Integer),
+        Column("event_key", String),
+        Column("created_at", DateTime, server_default=text("CURRENT_TIMESTAMP")),
+    )
+    async with engine.begin() as conn:
+        await conn.run_sync(meta.create_all)
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+
+    try:
+        async with sessions() as session, session.begin():
+            distractors = [
+                ReviewQueue(
+                    normalized_question=f"普通商品运费规则第{index}条是什么？",
+                    ai_suggested_answer="参考运费模板",
+                    review_status="通过" if index % 2 == 0 else "驳回",
+                    occurrence_count=1,
+                )
+                for index in range(119)
+            ]
+            target = ReviewQueue(
+                normalized_question="MH-LP100 智能猫砂盆报 E3 故障码怎么排查？",
+                ai_suggested_answer="检查红外防夹传感器与排便仓门",
+                review_status="通过",
+                approved_answer="请擦拭红外传感器并重新扣紧集便仓。",
+                occurrence_count=3,
+            )
+            ignored_pool = LowConfidenceQuestion(raw_question="不归本批次处理的其它问题", source="self_check")
+            batch_pool = [
+                LowConfidenceQuestion(raw_question="我家 MH-LP100 猫砂盆显示 E3 故障码怎么办", source="retrieval_low_conf"),
+                LowConfidenceQuestion(raw_question="MH-LP100 猫砂盆出现 E3 报错如何处理", source="user_feedback"),
+            ]
+            session.add_all([*distractors, target, ignored_pool, *batch_pool])
+            await session.flush()
+            target_id = target.id
+            batch_ids = [row.id for row in batch_pool]
+            ignored_id = ignored_pool.id
+
+        seen_candidate_counts: list[int] = []
+
+        class PrefilterInspectingModel:
+            max_retries = 0
+
+            def with_structured_output(self, schema, **kwargs):
+                return self
+
+            async def ainvoke(self, messages):
+                payload = json.loads(messages[-1].content)
+                cands = payload["pending_candidates"]
+                seen_candidate_counts.append(len(cands))
+                cand_ids = {item["id"] for item in cands}
+                assert target_id in cand_ids
+                return {
+                    "normalized_question": "MH-LP100 智能猫砂盆报 E3 故障码怎么排查？",
+                    "ai_suggested_answer": "清洁红外传感器后重启设备。",
+                    "matched_review_id": target_id,
+                }
+
+        failed_first = False
+
+        def fail_once(session, row, matched):
+            nonlocal failed_first
+            if not failed_first:
+                failed_first = True
+                raise RuntimeError("simulated commit failure")
+
+        cfg = config(flywheel_candidate_limit=100, structured_output_method="json_mode")
+        flywheel = Flywheel(
+            cfg,
+            sessions,
+            PrefilterInspectingModel(),
+            None,
+            pool_filter=LowConfidenceQuestion.id.in_(batch_ids),
+            before_commit=fail_once,
+        )
+        first_run = await flywheel.process()
+        assert seen_candidate_counts == [100, 100]
+        assert (first_run["processed"], first_run["merged"], first_run["failed"]) == (1, 1, 1)
+
+        flywheel.before_commit = None
+        second_run = await flywheel.process()
+        assert (second_run["processed"], second_run["merged"], second_run["failed"]) == (1, 1, 0)
+
+        async with sessions() as session:
+            refreshed_target = await session.get(ReviewQueue, target_id)
+            assert refreshed_target.occurrence_count == 5
+            assert (await session.get(LowConfidenceQuestion, ignored_id)).matched_review_id is None
+            all_rows = list(await session.scalars(select(ReviewQueue).order_by(ReviewQueue.id)))
+            window = select_candidate_window("MH-LP100 E3 故障", all_rows, 10)
+            assert len(window) == 10 and any(r.id == target_id for r in window)
+    finally:
+        await engine.dispose()

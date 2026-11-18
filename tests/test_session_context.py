@@ -4,12 +4,15 @@ import json
 from uuid import uuid4
 
 import pytest
-import pytest_asyncio
-from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, SystemMessage, ToolMessage
-from sqlalchemy import select, MetaData, Table, Column, Integer, String, Text, JSON, DateTime, UniqueConstraint, text
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+from langchain_core.messages import (
+    AIMessage,
+    AIMessageChunk,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
+from sqlalchemy import select
 
-from app.config import Settings
 from app.database.models import Conversation, ConversationSummary, Message
 from app.repositories.conversations import ConversationRepository
 from app.repositories.messages import MessageRepository
@@ -198,6 +201,7 @@ async def test_mysql_summary_and_new_tool_trace_persistence(mysql_session):
 async def test_owned_list_and_history_api_aliases(context_sessions):
     import httpx
     from fastapi import FastAPI
+
     from app.api import create_api_router
     user = str(uuid4())
     async with context_sessions() as session, session.begin():
@@ -245,6 +249,7 @@ class TitleModel(Model):
 async def test_sidebar_title_is_generated_once_and_falls_back_to_first_question(context_sessions):
     import httpx
     from fastapi import FastAPI
+
     from app.api import create_api_router
     model = TitleModel()
     service = WorkflowChatService(catalog=TestToolCatalog(), settings=settings(model_context_window=1_000_000), model=model,
@@ -314,11 +319,16 @@ async def test_same_session_serialization_and_summary_reference(context_sessions
 async def test_partial_tool_failure_keeps_checkpoint_and_safe_trace(context_sessions, caplog):
     from tests.workflow_fakes import tool_call
     class PartialModel(Model):
-        def __init__(self): super().__init__(); self.calls = 0
+        def __init__(self):
+            super().__init__()
+            self.calls = 0
+
         def with_structured_output(self, schema, **kwargs):
             if schema.__name__ == "IntentDecision":
                 class Runnable:
-                    async def ainvoke(self, messages): return {"intent": "订单", "confidence": .99}
+                    async def ainvoke(self, messages):
+                        return {"intent": "订单", "confidence": 0.99}
+
                 return Runnable()
             return super().with_structured_output(schema, **kwargs)
         async def astream(self, messages):
@@ -357,15 +367,21 @@ def test_unknown_window_requires_explicit_configuration(caplog):
 async def test_24_agent_turns_mysql_and_sqlite_checkpoint_restart(mysql_session, tmp_path, caplog):
     """Real storage + fake inference. Only generated owned rows are cleaned up."""
     from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
-    from sqlalchemy.ext.asyncio import async_sessionmaker
     from sqlalchemy import delete
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
     from tests.workflow_fakes import tool_call
     class AgentModel(Model):
-        def __init__(self): super().__init__(); self.calls = 0
+        def __init__(self):
+            super().__init__()
+            self.calls = 0
+
         def with_structured_output(self, schema, **kwargs):
             if schema.__name__ == "IntentDecision":
                 class Runnable:
-                    async def ainvoke(self, messages): return {"intent":"订单", "confidence":.99}
+                    async def ainvoke(self, messages):
+                        return {"intent": "订单", "confidence": 0.99}
+
                 return Runnable()
             return super().with_structured_output(schema, **kwargs)
         async def astream(self, messages):

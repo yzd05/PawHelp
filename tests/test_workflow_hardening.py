@@ -6,31 +6,68 @@ import asyncio
 import contextvars
 import json
 import logging
+from dataclasses import fields
+from pathlib import Path
 from random import Random
 from types import SimpleNamespace
 from uuid import uuid4
 
+import httpx
+import pytest
 from langchain_core.messages import AIMessageChunk, HumanMessage
 from langchain_core.outputs import ChatGeneration, LLMResult
 from langchain_core.runnables import RunnableLambda
 from langchain_core.tools import tool
 from langgraph.checkpoint.memory import InMemorySaver
-import pytest
-from sqlalchemy import Column, DateTime, Integer, JSON, MetaData, String, Table, select, text
+from sqlalchemy import (
+    JSON,
+    Column,
+    DateTime,
+    Integer,
+    MetaData,
+    String,
+    Table,
+    Text,
+    select,
+    text,
+)
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.context import ContextBudgetExceeded
-from app.database.models import Conversation, ConversationSummary, Message, RequestObservation
+from app.database.models import (
+    Conversation,
+    ConversationSummary,
+    KnowledgeChunk,
+    RequestObservation,
+)
+from app.database.session import (
+    MYSQL_UTC_INIT_COMMAND,
+    create_async_engine_from_settings,
+)
+from app.knowledge.chunking import KnowledgeDraft
+from app.knowledge.confidence import EvidenceGate, scoring_fingerprint
+from app.knowledge.evidence import EvidenceDecision
+from app.knowledge.jev_evidence import (
+    INSTRUCTIONS_SHA256,
+    JevEvidenceJudge,
+    JevRoutedChecker,
+)
+from app.knowledge.query_understanding import QueryPlan
+from app.knowledge.search import KnowledgeMatch, RetrievalResult, RetrievalStrategy
 from app.llm import create_chat_model, create_fast_chat_model
 from app.observability import Observability, is_allowed_self_hosted_langfuse_url
 from app.prompts import (
+    CONVERSATION_KNOWLEDGE_EXTRACTION_SYSTEM_TEMPLATE,
     CUSTOMER_SERVICE_SYSTEM_TEMPLATE,
+    render_conversation_knowledge_messages,
     render_customer_service_messages,
     render_workflow_system_prompt,
 )
 from app.repositories.conversations import ConversationRepository
+from app.repositories.knowledge import KnowledgeRepository
 from app.repositories.messages import MessageRepository
 from app.schemas import ChatRequest
-from app.services.tool_chat import ChatService
+from app.services.tool_chat import ChatService, PreparedTurn
 from app.tools.business import ToolRuntime, build_business_tools
 from app.tools.catalog import MultiServerMCPClient, ToolCatalog
 from app.tools.executor import ToolExecutor
@@ -43,11 +80,17 @@ from app.workflow.memory import (
     resolve_model_context_window,
 )
 from app.workflow.titles import ConversationTitles, render_title_prompt
+from app.workflow.understanding import classify_intent
 from mcp_servers.scenario import get_demo_settings
 from tests.fakes import fake_settings
 from tests.order_fakes import FakeOrderData, TestToolCatalog
-from tests.workflow_fakes import LabelledModel, LabelledSearch, tool_call
-
+from tests.workflow_fakes import (
+    InMemoryWorkflow,
+    LabelledModel,
+    LabelledSearch,
+    tool_call,
+    turn,
+)
 
 # ---------------------------------------------------------------------------
 # 1. [P0] Default mainstream model context windows & validate_budget()
@@ -261,16 +304,26 @@ def test_create_fast_chat_model_disables_streaming_and_uses_fast_model_override(
     assert default_fast.streaming is False
     assert default_fast.stream_usage is False
     assert default_fast.model_name == "deepseek-chat"
+    assert default_fast.request_timeout == 15.0
+    assert default_fast.max_retries == 1
 
     overridden = create_fast_chat_model(
-        fake_settings(openai_model="deepseek-reasoner", fast_openai_model="deepseek-chat")
+        fake_settings(
+            openai_model="deepseek-reasoner",
+            fast_openai_model="deepseek-chat",
+            fast_model_timeout_seconds=8.5,
+        )
     )
     assert overridden.streaming is False
     assert overridden.model_name == "deepseek-chat"
+    assert overridden.request_timeout == 8.5
+    assert overridden.max_retries == 1
 
     streaming_main = create_chat_model(fake_settings(openai_model="deepseek-chat"))
     assert streaming_main.streaming is True
     assert streaming_main.stream_usage is True
+    assert streaming_main.request_timeout == 60
+    assert streaming_main.max_retries == 2
 
 
 @pytest.mark.asyncio
@@ -387,6 +440,7 @@ async def test_business_route_char_by_char_streaming_strips_two_option_action_ta
 @pytest.mark.asyncio
 async def test_resume_order_with_non_layered_context_does_not_duplicate_prefetch_messages() -> None:
     from langchain_core.messages import ToolMessage
+
     from tests.workflow_fakes import InMemoryWorkflow, ScriptedUnderstandingModel, turn
 
     model = ScriptedUnderstandingModel(
@@ -760,3 +814,309 @@ async def test_query_product_is_deterministic_offline_and_marks_is_demo() -> Non
     assert res_a1["stock"] == res_a2["stock"] == res_b["stock"]
     assert res_other["is_demo"] is True
     assert isinstance(ChatService, type)
+
+
+# ---------------------------------------------------------------------------
+# 6. [A1 / A3 / A4] Policy hard-filter removal, section neighbors, timeouts,
+#    DB pool sizing, mining JSON keys & orphan task cleanup
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "intent,question,content_type,section_path,answer_text",
+    [
+        (
+            "售后",
+            "智能喂食器保修期是多久？怎么寄修？",
+            "manual",
+            "售后与保养手册 / 保修期限与寄修流程",
+            "智能硬件整机提供 12 个月保修。",
+        ),
+        (
+            "退款退货",
+            "飞轮审核补充的特殊赠品退货规则是什么？",
+            "faq",
+            "人工核准 FAQ / 特殊赠品退货规则",
+            "随单赠品需与主商品一并退回。",
+        ),
+    ],
+)
+async def test_aftersales_and_refund_retrieve_manual_and_faq_without_policy_hard_filter(
+    intent: str,
+    question: str,
+    content_type: str,
+    section_path: str,
+    answer_text: str,
+) -> None:
+    class ContentTypeAwareSearch:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, object]] = []
+
+        async def retrieve(self, query: str, **kwargs: object) -> RetrievalResult:
+            self.calls.append(kwargs)
+            allowed = kwargs.get("content_types")
+            chunk = KnowledgeChunk(
+                id=88,
+                category="售后服务",
+                questions=question,
+                answer=answer_text,
+                section_path=section_path,
+                content_type=content_type,
+                vectorize_status="done",
+            )
+            matches = (
+                ()
+                if allowed is not None and content_type not in allowed
+                else (KnowledgeMatch(chunk, 0.92),)
+            )
+            return RetrievalResult(
+                matches,
+                QueryPlan(normalized_query=query),
+                RetrievalStrategy.HYBRID_RERANK,
+                bool(matches),
+            )
+
+    model = LabelledModel(
+        intent,
+        outputs=[f"{answer_text}[1]"],
+        decision={"task_kind": "general_information"},
+    )
+    search = ContentTypeAwareSearch()
+    service = InMemoryWorkflow(model, search)
+    events = [event async for event in service.stream_turn(turn(question))]
+    assert events[-1].name == "done"
+    assert search.calls
+    assert all("content_types" not in call_kwargs for call_kwargs in search.calls)
+    assert model.expansion_calls == 1
+    assert events[-1].data["sources"][0]["section_path"] == section_path
+    assert answer_text in events[-1].data["content"]
+
+
+@pytest.mark.asyncio
+async def test_knowledge_repository_links_neighbors_only_within_same_section_path() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    meta = MetaData()
+    Table(
+        "knowledge_chunks",
+        meta,
+        Column("id", Integer, primary_key=True),
+        Column("category", String),
+        Column("questions", Text),
+        Column("answer", Text),
+        Column("section_path", String),
+        Column("content_type", String),
+        Column("source_kind", String, server_default=text("'manual'")),
+        Column("source_path", String),
+        Column("is_key_clause", Integer, server_default=text("0")),
+        Column("prev_chunk_id", Integer),
+        Column("next_chunk_id", Integer),
+        Column("vector_id", String),
+        Column("vectorize_status", String, server_default=text("'pending'")),
+        Column("created_at", DateTime, server_default=text("CURRENT_TIMESTAMP")),
+        Column("updated_at", DateTime, server_default=text("CURRENT_TIMESTAMP")),
+    )
+    async with engine.begin() as conn:
+        await conn.run_sync(meta.create_all)
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        drafts = [
+            KnowledgeDraft("售后政策", "退货条件", "第1段", section_path="售后政策 / 退货条件", content_type="policy"),
+            KnowledgeDraft("售后政策", "退货条件", "第2段", section_path="售后政策 / 退货条件", content_type="policy"),
+            KnowledgeDraft("MH-FD100", "清洁说明", "拆洗粮桶", section_path="MH-FD100 / 清洁保养", content_type="manual"),
+            KnowledgeDraft("MH-LP100", "故障码", "E1说明", section_path="MH-LP100 / 故障排查", content_type="manual"),
+            KnowledgeDraft("MH-LP100", "故障码", "E3说明", section_path="MH-LP100 / 故障排查", content_type="manual"),
+        ]
+        async with sessions() as session, session.begin():
+            rows = await KnowledgeRepository(session).add_drafts(drafts, link_neighbors=True, source_kind="markdown")
+            ids = [row.id for row in rows]
+            neighbors = [(row.prev_chunk_id, row.next_chunk_id) for row in rows]
+
+        assert neighbors == [
+            (None, ids[1]),
+            (ids[0], None),
+            (None, None),
+            (None, ids[4]),
+            (ids[3], None),
+        ]
+    finally:
+        await engine.dispose()
+
+
+def test_conversation_extraction_prompt_keys_and_scoring_fingerprint_intact() -> None:
+    assert "source_conversation_id" in CONVERSATION_KNOWLEDGE_EXTRACTION_SYSTEM_TEMPLATE
+    rendered_system = str(render_conversation_knowledge_messages("[]")[0].content)
+    assert "{items: [{source_conversation_id, question, answer}]}" in rendered_system
+    repo_root = Path(__file__).resolve().parents[1]
+    calibration_path = repo_root / "config" / "evidence-calibration.json"
+    calibration_data = json.loads(calibration_path.read_text(encoding="utf-8"))
+    cfg = fake_settings(evidence_calibration_path=str(calibration_path))
+    assert scoring_fingerprint(repo_root / "knowledge", cfg) == calibration_data["scoring_fingerprint"]
+    gate = EvidenceGate(cfg, repo_root / "knowledge")
+    assert gate.check([], legacy_confident=False).calibrated is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error",
+    [
+        TimeoutError("fast model timeout"),
+        ConnectionError("connection reset"),
+        httpx.ConnectTimeout("connect timed out"),
+    ],
+)
+async def test_classify_intent_degrades_immediately_on_transport_or_timeout_error(error: Exception) -> None:
+    calls = 0
+
+    class FailingTransportModel:
+        def with_structured_output(self, schema, *, method):
+            class Runnable:
+                async def ainvoke(self, messages):
+                    nonlocal calls
+                    calls += 1
+                    raise error
+
+            return Runnable()
+
+    decision = await classify_intent(FailingTransportModel(), "json_mode", "查询订单1001物流")
+    assert calls == 1
+    assert decision.intent == "其他"
+    assert decision.confidence == 0.0
+
+
+@pytest.mark.asyncio
+async def test_workflow_turn_timeout_emits_error_event_without_hanging(context_sessions) -> None:
+    class HangingModel(LabelledModel):
+        async def astream(self, messages):
+            self.agent_calls += 1
+            await asyncio.sleep(10)
+            yield AIMessageChunk(content="永不到达")
+
+    cfg = fake_settings(
+        openai_model="deepseek-chat",
+        mcp_enabled=False,
+        workflow_turn_timeout_seconds=0.05,
+    )
+    service = WorkflowChatService(
+        settings=cfg,
+        model=HangingModel("订单"),
+        session_factory=context_sessions,
+        order_data=FakeOrderData(),
+        catalog=TestToolCatalog(),
+        knowledge_search=LabelledSearch(True),
+    )
+    try:
+        prepared = await service.prepare_turn(ChatRequest(user_id=uuid4(), message="查订单1001状态"))
+        events = await asyncio.wait_for(
+            asyncio.create_task(_collect_stream(service, prepared)),
+            timeout=2.0,
+        )
+        assert events[-1].name == "error"
+        assert events[-1].data["code"] == "workflow_timeout"
+    finally:
+        await service.close()
+
+
+async def _collect_stream(service: WorkflowChatService, prepared: PreparedTurn) -> list:
+    return [event async for event in service.stream_turn(prepared)]
+
+
+@pytest.mark.asyncio
+async def test_agent_reminders_increment_agent_steps_and_respect_max_steps() -> None:
+    model = LabelledModel(
+        "物流",
+        outputs=["旧缓存答复1", "旧缓存答复2"],
+        decision={"task_kind": "progress_query", "requested_lookups": ["query_order", "query_logistics"]},
+    )
+    service = InMemoryWorkflow(model, LabelledSearch(True))
+    service._settings = service._settings.model_copy(update={"max_agent_steps": 1})
+    events = [event async for event in service.stream_turn(turn("先查订单1001状态再查物流"))]
+    assert events[-1].name == "done"
+    assert model.agent_calls == 2
+    assert "本轮实时查询尚未完成" in events[-1].data["content"]
+    snapshot = await service._checkpointer.aget_tuple({"configurable": {"thread_id": "demo:1"}})
+    assert snapshot.checkpoint["channel_values"]["agent_reminders"] == 1
+    assert snapshot.checkpoint["channel_values"]["agent_steps"] == 1
+
+
+def test_async_engine_passes_explicit_pool_settings_on_mysql_and_skips_sqlite(monkeypatch) -> None:
+    captured: list[tuple[str, dict[str, object]]] = []
+
+    def fake_create_async_engine(url: str, **kwargs: object):
+        captured.append((url, kwargs))
+        return SimpleNamespace(url=url, kwargs=kwargs)
+
+    monkeypatch.setattr("app.database.session.create_async_engine", fake_create_async_engine)
+
+    default_cfg = fake_settings(database_url="mysql+asyncmy://u:p@127.0.0.1:3306/pawhelp")
+    create_async_engine_from_settings(default_cfg)
+    assert captured[-1][1] == {
+        "pool_pre_ping": True,
+        "connect_args": {"init_command": MYSQL_UTC_INIT_COMMAND},
+        "pool_size": 10,
+        "max_overflow": 20,
+        "pool_recycle": 1800,
+    }
+
+    custom_cfg = fake_settings(
+        database_url="mysql+asyncmy://u:p@127.0.0.1:3306/pawhelp",
+        db_pool_size=24,
+        db_max_overflow=48,
+        db_pool_recycle_seconds=900,
+    )
+    create_async_engine_from_settings(custom_cfg)
+    assert captured[-1][1]["pool_size"] == 24
+    assert captured[-1][1]["max_overflow"] == 48
+    assert captured[-1][1]["pool_recycle"] == 900
+
+    sqlite_cfg = fake_settings(database_url="sqlite+aiosqlite:///:memory:")
+    create_async_engine_from_settings(sqlite_cfg)
+    assert "pool_size" not in captured[-1][1]
+    assert "max_overflow" not in captured[-1][1]
+    assert "pool_recycle" not in captured[-1][1]
+
+
+@pytest.mark.asyncio
+async def test_prepared_turn_has_no_dead_turn_lock_and_jev_shadow_reaps_cancelled_task(tmp_path) -> None:
+    assert "turn_lock" not in {field.name for field in fields(PreparedTurn)}
+
+    cal_path = tmp_path / "jev.json"
+    cal_path.write_text(
+        json.dumps(
+            {
+                "purpose": "jev_evidence_sufficiency",
+                "model": "jev-1.14.0",
+                "instructions_sha256": INSTRUCTIONS_SHA256,
+                "lower": 0.2,
+                "upper": 0.8,
+                "validation": {"passed": True},
+            }
+        ),
+        encoding="utf-8",
+    )
+    jev_cancelled = asyncio.Event()
+
+    class SlowJevClient:
+        async def system_one(self, state, questions, *, model=None, timeout=None):
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                jev_cancelled.set()
+                raise
+
+    class FastLlm:
+        async def check(self, question, evidence):
+            await asyncio.sleep(0)
+            return EvidenceDecision(useful=True, reason="LLM 判定充分")
+
+    checker = JevRoutedChecker(
+        FastLlm(),
+        JevEvidenceJudge(SlowJevClient(), model="jev-1.14.0", timeout=5.0),
+        mode="shadow",
+        calibration_path=cal_path,
+    )
+    decision = await checker.check("包邮门槛是多少", [{"n": 1, "answer": "满99包邮"}])
+    assert decision.useful is True
+    assert decision.jev == {"error": "SlowerThanLlm"}
+    assert jev_cancelled.is_set()
+

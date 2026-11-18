@@ -4,11 +4,14 @@ import json
 import pytest
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, ToolMessage
 
-from app.workflow.understanding import (
-    IntentDecision, ResolvedQuestion, classify_intent, plan_route, understanding_history,
-)
+from app.workflow.understanding import classify_intent, understanding_history
 from tests.workflow_fakes import (
-    InMemoryWorkflow, LabelledModel, LabelledSearch, ScriptedUnderstandingModel, run_script, tool_call, turn,
+    InMemoryWorkflow,
+    LabelledSearch,
+    ScriptedUnderstandingModel,
+    run_script,
+    tool_call,
+    turn,
 )
 
 
@@ -38,7 +41,7 @@ async def test_general_return_policy_does_not_select_or_query_an_order():
     assert events[-1].name == "done" and search.calls
     assert events[-1].data["tool_trace"] == []
     assert "申请退款" not in events[-1].data["suggested_actions"]
-    assert model.agent_calls == 1 and search.calls[0]["content_types"] == ("policy",)
+    assert model.agent_calls == 1 and "content_types" not in search.calls[0]
 
 
 async def test_missing_logistics_order_card_resumes_without_reclassification():

@@ -8,9 +8,16 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
+import httpx
+from langchain_core.messages import (
+    AIMessage,
+    BaseMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
+from openai import APIConnectionError, APITimeoutError
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-
 
 Intent = Literal["物流", "订单", "商品咨询", "退款退货", "售后", "投诉", "人工", "会话回顾", "闲聊", "其他"]
 Route = Literal["knowledge", "order_knowledge", "business", "complaint", "smalltalk", "other"]
@@ -18,6 +25,14 @@ LookupTool = Literal["query_order", "query_logistics"]
 logger = logging.getLogger(__name__)
 # Operational fallback threshold, NOT a calibrated probability of correctness.
 INTENT_REVIEW_THRESHOLD = 0.55
+_FAST_FAIL_TRANSPORT_ERRORS = (
+    TimeoutError,
+    ConnectionError,
+    httpx.TimeoutException,
+    httpx.TransportError,
+    APITimeoutError,
+    APIConnectionError,
+)
 
 
 def explicit_history_recall(question: str) -> bool:
@@ -221,6 +236,13 @@ async def classify_intent(
             logger.info("intent_candidate attempt=%s result=%s", attempt + 1, json.dumps(previous, ensure_ascii=False))
             if decision.intent != "其他" and decision.confidence >= INTENT_REVIEW_THRESHOLD:
                 return decision
+        except _FAST_FAIL_TRANSPORT_ERRORS:
+            logger.warning(
+                "intent_candidate transport failure attempt=%s; degrading immediately",
+                attempt + 1,
+                exc_info=True,
+            )
+            return IntentDecision(intent="其他", confidence=0)
         except Exception:
             logger.exception("intent_candidate invalid attempt=%s", attempt + 1)
             previous = "结构化输出无效"
