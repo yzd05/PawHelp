@@ -96,12 +96,12 @@ async def test_local_html_form_cannot_bypass_with_plain_post(operations):
 
 def test_all_pages_use_shared_navigation_and_operations_have_no_token_form():
     root = Path(__file__).resolve().parents[1] / "app/static"
-    for name in ("index", "kb", "rag-eval", "review", "observability"):
+    for name in ("index", "kb", "rag-eval", "review", "observability", "topics"):
         page = (root / f"{name}.html").read_text(encoding="utf-8")
         assert "data-app-navigation" in page
         assert '/static/navigation.js" defer' in page
         assert '/static/navigation.css' in page
-        if name in {"review", "observability"}:
+        if name in {"review", "observability", "topics"}:
             assert 'id="token"' not in page
             assert "管理令牌" not in page
 

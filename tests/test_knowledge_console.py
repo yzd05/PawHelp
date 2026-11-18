@@ -262,11 +262,21 @@ def test_knowledge_console_page_and_complete_api_workflow() -> None:
     assert kb_css.status_code == 200
     assert kb_js.status_code == 200
     assert "adminHeaders" in kb_js.text
-    assert "知识库工作台" in page.text
-    assert "切块预览" in page.text
-    assert "重建离线库" in page.text
+    assert "知识库管理" in page.text
+    assert "官方文档同步" in page.text
+    assert "章节切块预览" in page.text
+    assert "知识条目管理" in page.text
+    assert "检索效果在线测试" in page.text
+    assert "新增问答条目" in page.text
+    assert "历史对话知识提取" in page.text
     assert "编辑" in page.text
     assert "删除" in page.text
+    assert "01 · 建库材料" not in page.text
+    assert "pending 待补" not in page.text
+    assert 'style="' not in page.text
+    assert "onclick=" not in page.text
+    assert "官方文档" in kb_js.text
+    assert "审核入库" in kb_js.text
     assert materials.json()[0]["path"] == "policies/refund.md"
     assert preview.json()[0]["questions"] == "退货条件"
     assert overview.json()["dual_write_consistent"] is True
