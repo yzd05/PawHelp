@@ -49,4 +49,4 @@ names, SKU model numbers, order scenarios, and store policies in `knowledge/`
 and `evals/` are fictional pet-supplies fixtures created for engineering
 demonstration and evaluation; they contain no real customer records or
 third-party proprietary datasets. Earlier local prototype directories and
-external scratch corpora were audited and excluded prior to the `v1.0.0` open-source release.
+external scratch corpora were audited and excluded prior to the `v0.1.0` open-source release.

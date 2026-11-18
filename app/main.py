@@ -346,7 +346,7 @@ def create_app(
             if owned_engine is not None:
                 await owned_engine.dispose()
 
-    application = FastAPI(title="PawHelp", version="1.1.0", lifespan=lifespan)
+    application = FastAPI(title="PawHelp", version="0.1.0", lifespan=lifespan)
     application.add_middleware(_SecurityHeadersMiddleware)
     application.mount(
         "/static", StaticFiles(directory=CHAT_PAGE_PATH.parent), name="static"

@@ -3,17 +3,17 @@
 [![Source checks](https://github.com/yzd05/PawHelp/actions/workflows/source-checks.yml/badge.svg)](https://github.com/yzd05/PawHelp/actions/workflows/source-checks.yml)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Release: v1.1.0](https://img.shields.io/badge/release-v1.1.0-blue.svg)](CHANGELOG.md)
+[![Release: v0.1.0](https://img.shields.io/badge/release-v0.1.0-blue.svg)](CHANGELOG.md)
 
 <details>
 <summary><b>English Overview (Click to expand)</b></summary>
 
-**PawHelp** is a self-hosted e-commerce customer-support agent built with **FastAPI, LangGraph, MySQL 8.4, and Milvus 2.6**.
+**PawHelp** (`v0.1.0`, initial open-source preview) is a self-hosted e-commerce customer-support agent built with **FastAPI, LangGraph, MySQL 8.4, and Milvus 2.6**.
 - **Deterministic Graph & Two-Stage Interrupts**: Combines deterministic pre-routing (`resolve_reference → classify_intent → route`) with SQLite-checkpointed interrupts for ambiguous order selection (`select_order`) and write-gated ticket creation (`confirm_ticket`), resumable across restarts via `Command(resume)`.
 - **Hybrid RAG & Calibrated Two-Tier Gate**: `BAAI/bge-m3` dense + Milvus BM25 recall with RRF fusion and `bge-reranker-v2-m3` lifts 500-case **Recall@5 from `0.980` to `0.997`** and colloquial **MRR from `0.842` to `0.956`**.
 - **System-One Probabilistic Routing (TypeSafe Jev)**: Paired with a SHA-256 fingerprint-locked relevance prefilter (`0.174`), calibrated Jev (`P50 340 ms`, `~$0.025` per 499 checks) offloads **92.3%** of LLM sufficiency checks (**93.5%** with **0 false accepts / 0 false refusals** on the 77-case served hold-out split) while holding **90/90** out-of-scope refusals and **0.995** faithfulness.
 - **Closed-Loop Knowledge Flywheel & Dual-Write Consistency**: Fail-closed `KnowledgeConsistencyChecker` blocks duplicate/contradictory writes; a `pending / done / failed / deleting` state machine reconciles MySQL (source of truth) with Milvus without 2PC.
-- **Production-Grade Hardening**: Immutable three-layer session memory with protocol-safe tool-pair trimming, strict CSP3 + DOMPurify XSS defense, fast/main model split, and keyless MySQL 8.4 integration CI. See [Architecture Decision Records](docs/adr/0001-mysql-authority-and-milvus-derived-index.md).
+- **Security & Reliability Hardening**: Immutable three-layer session memory with protocol-safe tool-pair trimming, strict CSP3 + DOMPurify XSS defense, fast/main model split, and keyless MySQL 8.4 integration CI. See [Architecture Decision Records](docs/adr/0001-mysql-authority-and-milvus-derived-index.md).
 
 </details>
 
@@ -194,7 +194,7 @@ tests/          全离线单元回归、浏览器防 XSS 验收与 MySQL 集成�
 
 ### 单机演示边界与百级 QPS 演进锚点
 
-- **当前务实边界**：订单、退款、转人工均为演示数据与模拟服务；默认面向本机单实例部署（匿名 UUID 区分会话，本机管理免密、远程需管理令牌，详见 [安全说明](SECURITY.md)）；旁路 17 类主题分类器见[分类器说明](docs/topic-classifier.md)。
+- **当前务实边界（`v0.1.0` 初始开源预览版）**：订单、退款、转人工均为演示数据与模拟服务；默认面向本机单实例部署（匿名 UUID 区分会话，本机管理免密、远程需管理令牌，详见 [安全说明](SECURITY.md)）；旁路 17 类主题分类器见[分类器说明](docs/topic-classifier.md)。
 - **水平扩容演进路径**（保持代码克制不堆砌微服务，已在接口层预留注入缝）：
   - **有状态检查点解耦**：通过 `WorkflowChatService.set_checkpointer()` 将单机 `AsyncSqliteSaver` 无缝替换为共享 `AsyncPostgresSaver` / Redis，消除多副本 `SQLITE_BUSY` 与跨节点中断丢失（[ADR 0002](docs/adr/0002-deterministic-graph-and-two-stage-interrupts.md)）。
   - **本地推理与向量读写分离**：将 `3.3 GB` BGE-M3 + Reranker 抽离至独立 HuggingFace TEI 动态批推理容器，拆分后台批量向量化与在线检索的 Milvus 客户端通道（[ADR 0001](docs/adr/0001-mysql-authority-and-milvus-derived-index.md)、[ADR 0002](docs/adr/0002-deterministic-graph-and-two-stage-interrupts.md)）。

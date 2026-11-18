@@ -1,164 +1,110 @@
 # Changelog
 
-## 1.1.0 — 2026-11-17
+## 0.1.0 — 2026-11-17
+
+Initial open-source preview release of **PawHelp**.
 
 ### Conversation & workflow
 
-- Removed the legacy `content_types=("policy",)` hard filter in `TurnNodes.retrieve`
-  on return and after-sales intents while preserving multi-angle `_policy_queries`
-  expansion, so product manuals (`manuals/after-sales.md`) and operator-approved
-  flywheel FAQ entries are retrieved on the live path.
-- Split structured lightweight nodes onto `create_fast_chat_model` (15 s timeout,
+- LangGraph customer-support state machine combining deterministic pre-routing
+  (`resolve_reference → classify_intent → plan_route`) with full-corpus knowledge
+  retrieval or a controlled tool agent over incremental SSE delta streaming.
+- Two-stage resumable graph interrupts (`select_order` for ambiguous order selection
+  and `confirm_ticket` bound to `proposal_id` for ticket confirmation) persisted via
+  the SQLite checkpointer across restarts; prefetched orders are injected directly as
+  the opening `query_order` call/result pair (saving one model round and one duplicate
+  lookup).
+- Immutable three-layer session memory (`MODEL_CONTEXT_WINDOW=65536`,
+  `MODEL_MAX_OUTPUT_TOKENS=1024`) with protocol-safe tool-pair trimming, intermediate
+  tool-result compaction, asynchronous segmented summaries with Chinese-numeral
+  equivalence guards and failure backoff, anti-fabrication guards on order-number
+  rewrites, and one-shot background sidebar titles.
+- Split lightweight structured nodes onto `create_fast_chat_model` (15 s timeout,
   `max_retries=1`) for reference resolution, intent classification, query
-  understanding, question splitting, knowledge consistency, mining, titles and
-  summaries; removed double-retry amplification on `classify_intent` timeouts and
-  added a 90 s whole-turn wall-clock timeout (`workflow_turn_timeout_seconds`).
-- Incremental SSE delta streaming, cached MCP tool discovery, explicit SQLAlchemy
-  connection pool sizing (`db_pool_size`, `db_max_overflow`,
-  `db_pool_recycle_seconds`), non-blocking async observability persistence, and
-  aligned `.env.example` context window defaults (`MODEL_CONTEXT_WINDOW=65536`,
-  `MODEL_MAX_OUTPUT_TOKENS=1024`).
+  understanding, question splitting, knowledge consistency, mining, titles, and
+  summaries, paired with single-attempt transport fallback on `classify_intent` and a
+  90 s whole-turn wall-clock timeout (`workflow_turn_timeout_seconds`).
+- Multi-angle `_policy_queries` expansion on return and after-sales intents without
+  category hard-filtering so product manuals (`manuals/after-sales.md`) and
+  operator-approved flywheel FAQ entries are retrieved alongside store policies;
+  refined intent rules separate account-security incidents (`人工`) from self-service
+  account/login questions (`商品咨询`).
 
 ### Knowledge, flywheel & evaluation
 
-- Hardened MySQL-to-Milvus dual writes with a four-state lifecycle
-  (`pending / done / failed / deleting`): deletes and Markdown syncs mark
-  transient `deleting` tombstones before Milvus vector removal (excluded from
-  hydration and chunk totals), batch vectorization isolates poison-pill chunks as
-  `failed` without blocking healthy peers, Milvus UTF-8 `VARCHAR` byte limits are
-  widened and validated, and orphan vectors are reconciled bidirectionally.
-- Scoped `prev_chunk_id` / `next_chunk_id` adjacency links strictly to chunks
-  sharing the same `section_path`; pre-ranked `ReviewQueue` candidates by lexical
-  overlap when exceeding `flywheel_candidate_limit` (100) instead of raising a
-  hard error; pinned explicit JSON-mode keys in
-  `CONVERSATION_KNOWLEDGE_EXTRACTION_SYSTEM_TEMPLATE`; safely awaited cancelled
-  `jev_task` in shadow mode; shared warmed models in `EvaluationPipeline`.
+- Structured Markdown ingestion (16 documents, 97 chunks with series-scoped manual
+  titles and same-`section_path` `prev_chunk_id` / `next_chunk_id` adjacency links)
+  indexed into `BAAI/bge-m3` dense + Milvus BM25 hybrid recall with RRF fusion and
+  `bge-reranker-v2-m3` cross-encoder reranking.
+- 500-question retrieval benchmark (410 answerable, 90 out-of-scope; 30-day invoice
+  window aligned across corpus and benchmark) comparing four retrieval strategies by
+  query type (`hybrid + rerank` Recall@5 `0.997`, colloquial MRR `0.956`), alongside a
+  22-case structured routing benchmark and a 20-case consistency benchmark.
+- Calibrated two-tier evidence gate with citations and `转人工` / `建工单` fallback
+  actions on refusal:
+  - First-tier relevance prefilter (`0.174`) calibrated on the served path (72
+    training / 24 independent hold-out cases, `0/24` unsafe accepts, `0.950` recall)
+    and guarded by a SHA-256 `scoring_fingerprint` covering corpus files, retrieval
+    code, rewrite prompt, embedding/reranking models, and retrieval settings.
+  - Second-tier sufficiency verification supporting optional TypeSafe Jev
+    (`jev-1.14.0`, `EVIDENCE_JUDGE=shadow|jev`, default `llm`): calibrated thresholds
+    (`P ≤ 0.05` refuse, `P ≥ 0.60` accept) decide `92.3%` of sufficiency checks
+    (`93.5%` with `0` false accepts / `0` false refusals on the 77-case served
+    hold-out split, `AUC 0.999`) while preserving `90/90` out-of-scope refusals;
+    shadow mode cleanly awaits cancelled background tasks. Also evaluated and rejected
+    Jev for single-turn intent review after a 199-question benchmark tied
+    `confidence < 0.55`.
+- Closed-loop knowledge flywheel and fail-closed `KnowledgeConsistencyChecker`:
+  low-confidence and downvoted questions are normalized, pre-ranked by lexical overlap
+  when exceeding `flywheel_candidate_limit` (100), deduplicated, reviewed on `/review`
+  (rendering gate scores as readable sentences), checked against existing chunks
+  (`409` on manual conflicts, `discarded` staging on mined QA with migration `0012`,
+  non-destructive conflict warnings on `/kb` after Markdown rebuilds), and written
+  back safely.
+- Four-state MySQL-to-Milvus dual-write lifecycle (`pending / done / failed / deleting`):
+  deletes and Markdown syncs mark transient `deleting` tombstones before Milvus vector
+  removal (excluded from hydration and chunk totals), batch vectorization isolates
+  poison-pill chunks as `failed` without blocking healthy peers, Milvus UTF-8
+  `VARCHAR` byte limits are widened and validated, and orphan vectors are reconciled
+  bidirectionally.
+
+### Tools, security & web
+
+- Controlled tool registry with JSON-schema validation, timeouts, read-only retries,
+  confirmation-gated writes, cached MCP tool discovery, and an audit log; logistics
+  and after-sales demo services run over Streamable HTTP MCP with an allow-list and
+  HMAC-signed demo scenario headers.
+- Unified admin route authentication under `app.api.auth.authorize` (loopback
+  same-origin console header or constant-time `X-Admin-Token`, including
+  `/v1/topics/*`), sanitized public citation views, and bounded `ChatRequest` /
+  `ExtractionRequest` payload lengths.
+- Modularized static assets across all 6 HTML consoles (zero inline scripts or styles)
+  paired with DOMPurify allow-list sanitization, strict CSP3
+  (`default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; frame-ancestors 'none'`),
+  `X-Content-Type-Options`, `X-Frame-Options`, and `Referrer-Policy` headers.
+- Side-effect-free `LazyASGIApp` import wrapper, non-blocking async route handlers,
+  explicit SQLAlchemy connection pool sizing (`db_pool_size`, `db_max_overflow`,
+  `db_pool_recycle_seconds`), background retrieval model warm-up (first chat
+  `37.5s → 13.2s`, text-splitter import `27s → 7s`, shared warmed models in
+  `EvaluationPipeline`), and serving-only `log/app.log` / SQLite checkpointer
+  isolation so test runs remain in memory.
+
+### Operations, observability & packaging
+
+- One-command `pawhelp-start` (`python -m scripts.start`, with `--bootstrap` first-run
+  ingestion/vectorization and custom MCP port forwarding), keyless offline/online
+  Alembic migrations (`0001`–`0013`, including `0013_hardening_schema_cleanup`),
+  self-hosted Langfuse export with async shielded cost persistence, and an offline
+  17-label `RoBERTa-wwm-ext` topic classifier for the question pool.
 - Tracked synthetic calibration snapshots
   (`relevance-train-served-20261020.json`,
   `relevance-validation-served-20261020.json`) and a compact read-only evaluation
-  baseline (`reports/retrieval-evaluation.baseline.json`) with automatic fallback
-  in `GET /v1/rag-eval/report`, so `/observability` and `/rag-eval` render full
-  charts out of the box on fresh clones without paid model runs.
-
-### Security & web
-
-- Unified admin route authentication under `app.api.auth.authorize` (including
-  `/v1/topics/*`), moved all scripts and styles out of the 6 HTML pages into
-  external static modules, enforced strict CSP3 (`default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; frame-ancestors 'none'`)
-  plus `X-Content-Type-Options`, `X-Frame-Options` and `Referrer-Policy` headers
-  alongside DOMPurify sanitization, and bounded `ChatRequest` / `ExtractionRequest`
-  payload lengths.
-- Introduced `LazyASGIApp` for side-effect-free `app.main` imports and non-blocking
-  route handlers.
-
-### Packaging, documentation & CI
-
+  baseline (`reports/retrieval-evaluation.baseline.json`) with automatic fallback in
+  `GET /v1/rag-eval/report` so `/observability` and `/rag-eval` render out of the box
+  on fresh clones.
 - Cross-platform `pyproject.toml` and `uv.lock` (CUDA 13.0 PyTorch wheels on
-  Windows/Linux with automatic PyPI wheel fallback on macOS), `pawhelp-start --bootstrap`
-  one-command onboarding with custom MCP port forwarding, keyless Alembic
-  migrations (including `0013_hardening_schema_cleanup`), `SECURITY.md`,
-  `THIRD_PARTY_NOTICES.md`, GitHub issue/PR templates, and 4 architecture decision
-  records under `docs/adr/0001..0004`.
-- GitHub Actions CI (`source-checks.yml`) runs `uv run --locked ruff check`,
-  headless browser Markdown/XSS assertions, keyless `alembic upgrade head` against
-  `mysql:8.4` (`+00:00`), and the full `pytest` suite including live-MySQL
-  integration tests.
-
-## 1.0.0 — 2026-10-22
-
-### Conversation
-
-- LangGraph workflow: reference resolution → intent classification →
-  deterministic routing → knowledge retrieval or tool agent → SSE stream.
-- Order selection and ticket confirmation as graph interrupts, resumable after a
-  restart through the SQLite checkpointer.
-- Layered session context with a token budget and asynchronous summaries.
-- Guards against rewrites that invent or replace an explicit order number.
-- Sidebar titles generated once in the background; greetings are skipped and
-  short questions are used as-is, falling back to the first question on failure.
-
-### Knowledge and retrieval
-
-- Markdown ingestion into structured chunks; BGE-M3 dense + Milvus BM25 hybrid
-  recall, RRF fusion, BGE reranking and a calibrated evidence gate with citations.
-- 500-question retrieval benchmark (410 answerable, 90 out-of-scope) comparing
-  four strategies by query type.
-- Knowledge flywheel: low-confidence questions are normalized, deduplicated,
-  reviewed by an operator and written back to the knowledge base.
-- Review page shows evidence-gate refusals as a sentence with score and threshold,
-  not the stored confidence JSON.
-- Invoice requests are accepted within 30 days of confirmed receipt (was 90); the
-  benchmark rows and the evidence-gate calibration were updated with it. The
-  96 labelled cases were re-collected locally and re-reviewed; the threshold (0.127)
-  and its independent validation result are unchanged.
-- The four product manuals name the series they cover in their title, so every
-  section chunk carries it; a model-specific question such as "MH-FD30 的录音呼唤
-  最长能录多久" is no longer refused for evidence that does not name the model. The
-  separate "本篇适用于" intro chunks were dropped (101 → 97 document chunks) and the
-  calibration was re-collected; the threshold (0.127) still passes validation.
-- Every write outside a Markdown rebuild is checked against existing knowledge
-  first: a model compares the entry with its nearest matches and refuses a
-  duplicate or a contradiction (manual entries and edits get 409, approved
-  reviews stay pending, mined QA is staged as discarded with its reason, migration
-  0012), naming the existing entry by its ID with a one-sentence reason in Chinese.
-  The check fails closed: if it cannot run, nothing is written. Seven old
-  manual and mined entries that contradicted or repeated the shipping, return and
-  promotion documents were removed.
-- A Markdown rebuild rechecks the manual, approved and mined entries it keeps
-  against the rebuilt documents and lists any that are now duplicates or
-  contradictions on /kb; it never deletes them itself.
-- The evidence-gate calibration is collected on the served path (model rewrite,
-  question split, whole knowledge base) instead of the raw query. Its fingerprint
-  covers the documents, the chunking/retrieval code, the rewrite prompt, the models
-  and the retrieval settings, so changing any of them leaves the gate uncalibrated;
-  /kb warns when manual or mined entries changed after calibration. The 96 labels
-  were re-reviewed on the new evidence and are unchanged; the threshold rose from
-  0.127 to 0.174 and independent validation passes (0/24 unsafe, recall 0.95).
-- Optional TypeSafe Jev (`jev-1.14.0`) evidence-sufficiency judge. `EVIDENCE_JUDGE=shadow`
-  logs Jev's P(yes) next to the LLM verdict; `jev` lets Jev accept or refuse outside a
-  calibrated band and hands the band, Jev errors and calibration mismatches to the LLM.
-  The default stays `llm` and needs no key. On the archived 500-question run (498 scored)
-  the thresholds chosen on training cases are P ≤ 0.05 refuse / P ≥ 0.60 accept; on the
-  served validation path Jev matches the LLM (0 false refusals, 0 false accepts) and decides
-  93.5% of cases itself, AUC 0.999. A full served run in `jev` mode had Jev decide 372 of the
-  403 evidence checks (92.3%) with no false refusal or false accept; false refusals went
-  18 → 17 of 410, out-of-scope refusals stayed 90/90, and the remaining over-strict refusals
-  all came from the band handed to the LLM.
-- Jev was also tried as the intent review signal on 199 new single-turn questions (44 user-reviewed
-  labels, fixed validation split). It tied the current confidence < 0.55 rule on validation and
-  was not adopted: the LLM's wrong intents are confident, so no threshold on either signal catches them.
-- The intent prompt counts account login and password rules, points and coupons, and shop and company
-  information as 商品咨询. Questions such as "怎么改登录密码" were classed 其他 with high
-  confidence and the customer was asked to clarify instead of getting the account-security answer.
-- Account-security incidents (a stolen account, unusual logins, a frozen account) are classed 人工,
-  because they need a person to verify identity and freeze the account; questions about how to change
-  a password or rebind a phone stay 商品咨询.
-- A knowledge refusal offers the 转人工 and 建工单 buttons instead of ending the conversation.
-
-### Tools
-
-- Tool registry with JSON-schema validation, timeouts, read-only retries,
-  confirmation-gated writes and an audit log.
-- Logistics and after-sales demo services over MCP with an allow-list policy.
-- The order prefetched for a turn reaches the agent as its `query_order` call and
-  result, so a logistics turn no longer queries the same order twice (one model
-  round and one tool call fewer).
-
-### Operations
-
-- `scripts.start` brings up containers, migrations, MCP servers, the topic classifier
-  and the app in one command, and stops them together on Ctrl+C.
-- Only the served app writes `log/app.log` and the SQLite conversation checkpoints;
-  apps built in tests keep checkpoints in memory, so test runs no longer mix fake
-  conversations into the real context log. The log handler is detached at shutdown.
-- Faster cold start: retrieval models warm up in the background at startup
-  (first chat 37.5s → 13.2s) and the text-splitter import no longer
-  loads sentence-transformers (import 27s → 7s).
-- Admin pages for knowledge, RAG evaluation, review, cost/observability and topics.
-- Self-hosted Langfuse export; token usage and estimated cost per intent.
-- Offline 17-label topic classifier (RoBERTa-wwm-ext) for the question pool.
-
-### Quality
-
-- Offline regression suite (fake models, in-memory checkpoints) in CI; live-MySQL
-  integration tests run against an explicit disposable database.
+  Windows/Linux with automatic PyPI wheel fallback on macOS), `SECURITY.md`,
+  `THIRD_PARTY_NOTICES.md`, GitHub issue/PR templates, Architecture Decision Records
+  (`docs/adr/0001..0004`), and GitHub Actions CI (`source-checks.yml`) running
+  `uv run --locked ruff check`, headless browser Markdown/XSS/CSP assertions, keyless
+  `alembic upgrade head` against `mysql:8.4` (`+00:00`), and the full `pytest` suite.

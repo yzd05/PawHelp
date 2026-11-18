@@ -54,7 +54,7 @@ def test_chat_markdown_and_app_assets_are_served_locally() -> None:
 
 def test_strict_csp_and_security_headers_enforce_on_pages_and_exempt_openapi_docs() -> None:
     app = create_app(settings=_settings(), model=FakeChatModel())
-    assert app.version == "1.1.0"
+    assert app.version == "0.1.0"
 
     with TestClient(app) as client:
         for path in ("/", "/kb", "/rag-eval", "/review", "/observability", "/topics", "/static/chat-app.js", "/health"):
@@ -74,4 +74,4 @@ def test_strict_csp_and_security_headers_enforce_on_pages_and_exempt_openapi_doc
             assert doc_resp.headers["x-frame-options"] == "DENY"
             assert doc_resp.headers["referrer-policy"] == "same-origin"
             if doc_path == "/openapi.json":
-                assert doc_resp.json()["info"]["version"] == "1.1.0"
+                assert doc_resp.json()["info"]["version"] == "0.1.0"

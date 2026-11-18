@@ -37,6 +37,7 @@ def test_pyproject_and_lockfile_support_macos_and_declare_oss_metadata() -> None
     pyproject = _load_pyproject()
     project = pyproject["project"]
 
+    assert project["version"] == "0.1.0"
     assert project["readme"] == "README.md"
     assert project["license"] == "MIT"
     assert project["urls"]["Repository"] == "https://github.com/yzd05/PawHelp"
@@ -62,6 +63,8 @@ def test_pyproject_and_lockfile_support_macos_and_declare_oss_metadata() -> None
     assert "darwin" not in torch_sources[0]["marker"]
 
     lock = _load_uv_lock()
+    pawhelp_packages = [pkg for pkg in lock["package"] if pkg["name"] == "pawhelp"]
+    assert len(pawhelp_packages) == 1 and pawhelp_packages[0]["version"] == "0.1.0"
     torch_packages = [pkg for pkg in lock["package"] if pkg["name"] == "torch"]
     assert torch_packages
     wheel_urls = [
@@ -115,6 +118,7 @@ def test_compliance_security_git_compose_and_ci_contracts() -> None:
     assert "Marked 18.1.0" in notices
     assert "DOMPurify 3.4.16" in notices
     assert "MIT License" in notices
+    assert "prior to the `v0.1.0` open-source release." in notices
 
     security = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
     assert "https://github.com/yzd05/PawHelp/security/advisories/new" in security
@@ -474,12 +478,13 @@ def test_adrs_baseline_snapshots_readme_and_scoring_fingerprint_intact() -> None
         img_path = ROOT / "docs" / "images" / img_name
         assert img_path.is_file() and img_path.stat().st_size > 10_000
 
-    assert "v1.1.0" in readme
+    assert "[![Release: v0.1.0](https://img.shields.io/badge/release-v0.1.0-blue.svg)](CHANGELOG.md)" in readme
     assert "English Overview" in readme
     assert "docs/images/interrupt-flow.png" in readme
     assert "Hold-out Only" in readme
     changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-    assert "## 1.1.0 — 2026-11-17" in changelog
+    release_headings = [line for line in changelog.splitlines() if line.startswith("## ")]
+    assert release_headings == ["## 0.1.0 — 2026-11-17"]
 
     from app.api.evaluation import _read_rag_eval_report
     from app.evaluation.dashboard import calibration_report
