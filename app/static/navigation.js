@@ -32,28 +32,51 @@
     }
   }
 
+  function attachDialogLightDismiss(dialog) {
+    if ("closedBy" in HTMLDialogElement.prototype) return;
+    const outside = (event) => {
+      const rect = dialog.getBoundingClientRect();
+      return (
+        event.clientX < rect.left ||
+        event.clientX > rect.right ||
+        event.clientY < rect.top ||
+        event.clientY > rect.bottom
+      );
+    };
+    let pressedOutside = false;
+    dialog.addEventListener("pointerdown", (event) => {
+      pressedOutside = outside(event);
+    });
+    dialog.addEventListener("pointerup", (event) => {
+      if (pressedOutside && outside(event)) dialog.close();
+    });
+  }
+
   function buildTokenDialog(updateTrigger) {
     const dialog = document.createElement("dialog");
     dialog.className = "console-token-dialog";
-    dialog.setAttribute("aria-label", "后台访问凭证");
+    dialog.setAttribute("closedby", "any");
+    dialog.setAttribute("aria-labelledby", "consoleTokenHeading");
     const form = document.createElement("form");
     form.method = "dialog";
     const heading = document.createElement("h2");
-    heading.textContent = "后台访问凭证";
+    heading.id = "consoleTokenHeading";
+    heading.textContent = "管理后台访问凭证";
     const hint = document.createElement("p");
     hint.className = "muted";
     hint.textContent =
-      "本机 localhost 同源访问免填；局域网或容器映射访问时输入服务端 ADMIN_TOKEN（仅保存在当前标签页会话）。";
+      "本机同源访问免密直连；局域网或远程访问请输入管理员访问密钥（仅保存在当前标签页会话）。";
     const input = document.createElement("input");
     input.type = "password";
     input.autocomplete = "off";
-    input.placeholder = "输入 X-Admin-Token";
+    input.setAttribute("aria-label", "管理员访问密钥");
+    input.placeholder = "请输入管理员访问密钥";
     const actions = document.createElement("div");
     actions.className = "console-token-actions";
-    const save = document.createElement("button");
-    save.type = "submit";
-    save.className = "primary";
-    save.textContent = "保存并刷新";
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.textContent = "取消";
+    cancel.addEventListener("click", () => dialog.close());
     const clear = document.createElement("button");
     clear.type = "button";
     clear.textContent = "清除凭证";
@@ -63,13 +86,13 @@
       dialog.close();
       location.reload();
     });
-    const cancel = document.createElement("button");
-    cancel.type = "button";
-    cancel.textContent = "取消";
-    cancel.addEventListener("click", () => dialog.close());
-    actions.append(save, clear, cancel);
+    const save = document.createElement("button");
+    save.type = "submit";
+    save.className = "primary";
+    save.textContent = "保存并刷新";
+    actions.append(cancel, clear, save);
     form.append(heading, hint, input, actions);
-    form.addEventListener("submit", event => {
+    form.addEventListener("submit", (event) => {
       event.preventDefault();
       writeToken(input.value);
       updateTrigger();
@@ -77,6 +100,7 @@
       location.reload();
     });
     dialog.append(form);
+    attachDialogLightDismiss(dialog);
     document.body.append(dialog);
     return {
       open() {
@@ -88,7 +112,7 @@
   }
 
   document.body.classList.add(customerPage ? "customer-page" : "console-page");
-  document.querySelectorAll("[data-app-navigation]").forEach(container => {
+  document.querySelectorAll("[data-app-navigation]").forEach((container) => {
     container.classList.add("app-nav");
     container.setAttribute("aria-label", "全局页面导航");
     const links = pages.map(([path, label]) => {
@@ -114,19 +138,19 @@
       brand.textContent = "PawHelp";
       const caption = document.createElement("p");
       caption.className = "console-caption";
-      caption.textContent = "客户服务管理";
+      caption.textContent = "客户服务与知识运营中心";
       const bottom = document.createElement("div");
       bottom.className = "console-sidebar-bottom";
       const chat = document.createElement("a");
       chat.href = "/";
-      chat.textContent = "返回客户聊天 ↗";
+      chat.textContent = "返回智能客服前台 ↗";
       const mode = document.createElement("small");
-      mode.textContent = "本地演示环境";
+      mode.textContent = "官方客服运营环境";
       const tokenTrigger = document.createElement("button");
       tokenTrigger.type = "button";
       tokenTrigger.className = "console-token-button";
       const refreshLabel = () => {
-        tokenTrigger.textContent = readToken() ? "已设访问凭证" : "设置访问凭证";
+        tokenTrigger.textContent = readToken() ? "已配置访问凭证" : "设置访问凭证";
       };
       refreshLabel();
       let modal = null;

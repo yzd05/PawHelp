@@ -1,36 +1,61 @@
 @import url('/static/console.css');
-/* Shared navigation, independent of each page's content layout. */
+
+/* Shared Manga / Soft Neo-Brutalist navigation, independent of each page's content layout. */
 [data-app-navigation].app-nav {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   padding: 0;
   margin: 0;
   max-width: 100%;
   background: transparent;
-  font: 700 13px/1.5 ui-monospace, "Cascadia Mono", "Microsoft YaHei", monospace;
+  font: 700 13.5px/1.5 var(--font-sans);
 }
+
 [data-app-navigation].app-nav a {
-  display: flex;
+  display: inline-flex;
   align-items: center;
+  gap: 6px;
   font: inherit;
   min-height: 40px;
-  padding: 8px 14px;
-  border: 2px solid #1f2937;
-  color: #1a1a1a;
-  background: #fff;
-  box-shadow: 3px 3px 0 0 rgba(0, 0, 0, .15);
+  padding: 7px 14px;
+  border: 2px solid var(--ink);
+  color: var(--text);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
   text-decoration: none;
   white-space: nowrap;
-  transition: transform 200ms ease-out, box-shadow 200ms ease-out, background 200ms ease-out;
+  transition: transform var(--ease), box-shadow var(--ease), background var(--ease);
 }
-[data-app-navigation].app-nav a:hover { background: #e0f2fe; box-shadow: none; transform: translate(2px, 2px); }
-[data-app-navigation].app-nav a[aria-current="page"] { background: #38bdf8; box-shadow: none; transform: translate(2px, 2px); }
-[data-app-navigation].app-nav a:focus-visible { outline: 2px solid #38bdf8; outline-offset: 2px; }
+
+[data-app-navigation].app-nav a:hover {
+  background: var(--sky-soft);
+  box-shadow: none;
+  transform: translate(2px, 2px);
+}
+
+[data-app-navigation].app-nav a[aria-current="page"] {
+  background: var(--sky);
+  box-shadow: none;
+  transform: translate(2px, 2px);
+}
+
+[data-app-navigation].app-nav a:focus-visible {
+  outline: 2px solid var(--sky);
+  outline-offset: 2px;
+}
+
+@media (forced-colors: active) {
+  [data-app-navigation].app-nav a[aria-current="page"] {
+    outline: 2px solid Highlight;
+    outline-offset: -4px;
+  }
+}
+
 @media (max-width: 650px) {
   .topbar .topbar-actions { flex-wrap: wrap; min-width: 0; }
   .topbar .new-chat { flex-shrink: 0; }
-  [data-app-navigation].app-nav { gap: 2px; }
-  [data-app-navigation].app-nav a { padding: 5px 7px; }
+  [data-app-navigation].app-nav { gap: 4px; }
+  [data-app-navigation].app-nav a { padding: 5px 9px; font-size: 13px; }
 }

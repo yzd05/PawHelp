@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#f5f5f5">
+  <meta name="theme-color" content="#f5f5f4">
   <title>PawHelp 智能客服</title>
   <link rel="stylesheet" href="/static/theme.css">
   <link rel="stylesheet" href="/static/chat.css">
@@ -11,9 +11,9 @@
   <script src="/static/navigation.js" defer></script>
 </head>
 <body>
-  <main class="page">
+  <main class="page" id="chatPageMain">
     <section class="app-shell" aria-label="PawHelp 智能客服">
-      <aside class="sidebar">
+      <aside class="sidebar" aria-label="会话导航与服务贴士">
         <div class="brand">
           <span class="brand-mark" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -21,27 +21,25 @@
               <path d="M9 14h.01M15 14h.01M10 17c1.2.7 2.8.7 4 0"/>
             </svg>
           </span>
-          PawHelp
+          <div class="brand-copy">
+            <span class="brand-name">PawHelp</span>
+            <span class="brand-tag">宠物店客服</span>
+          </div>
         </div>
 
         <p class="sidebar-label">我的会话</p>
         <div id="conversationList" class="conversation-list" aria-label="会话列表"></div>
-        <div class="conversation-card">
-          <span class="conversation-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square" stroke-linejoin="miter">
-              <path d="M12 3v4M12 17v4M3 12h4M17 12h4"/>
-              <path d="m6 6 3 3M15 15l3 3M18 6l-3 3M9 15l-3 3"/>
-            </svg>
-          </span>
+
+        <div class="conversation-card" hidden>
           <div class="conversation-copy">
             <strong>在线客服</strong>
-            <span id="conversationPreview">随时为你解答订单问题</span>
+            <span id="conversationPreview">随时为您解答订单与售后问题</span>
           </div>
         </div>
 
         <div class="sidebar-note">
-          <strong>服务说明</strong>
-          <p>当前环境提供演示订单与模拟人工转接。请勿输入密码、身份证号等敏感信息。</p>
+          <strong>服务贴士</strong>
+          <p>支持查询演示订单、实时物流与售后申请。请勿发送密码、身份证号等隐私信息。</p>
         </div>
       </aside>
 
@@ -54,14 +52,14 @@
             </svg>
           </span>
           <div class="agent-meta">
-            <strong>PawHelp 客服助手</strong>
-            <span><i class="status-dot"></i><span id="agentStatus">在线</span></span>
+            <strong>PawHelp 客服小喵</strong>
+            <span><i class="status-dot" aria-hidden="true"></i><span id="agentStatus">官方宠物客服 · 7×24 小时实时响应</span></span>
           </div>
           <div class="topbar-actions">
             <nav class="page-nav" aria-label="全局页面导航" data-app-navigation>
               <a href="/admin">管理后台</a>
             </nav>
-            <button class="new-chat" id="newChatButton" type="button">新建会话</button>
+            <button class="new-chat" id="newChatButton" type="button">＋ 新建会话</button>
           </div>
         </header>
 
@@ -69,17 +67,18 @@
 
         <footer class="composer-wrap">
           <p id="contextCompressionStatus" role="status" aria-live="polite" hidden>
-            正在压缩会话上下文… <span>后台处理中，可继续聊天</span>
+            正在整理历史对话… <span>不影响继续提问</span>
           </p>
           <form class="composer" id="chatForm">
-            <textarea id="messageInput" rows="1" maxlength="2400" placeholder="输入你的问题…" aria-label="输入消息"></textarea>
+            <label class="visually-hidden" for="messageInput">输入咨询内容</label>
+            <textarea id="messageInput" rows="1" maxlength="2400" placeholder="有问题随时告诉小喵，例如：查订单物流、猫砂盆故障、7天退换…" aria-describedby="composerHint"></textarea>
             <button class="send-button" id="sendButton" type="submit" aria-label="发送消息" disabled>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>
               </svg>
             </button>
           </form>
-          <p class="composer-hint">按 Enter 发送，按住 Shift 再按 Enter 换行，请勿发送密码等敏感信息</p>
+          <p class="composer-hint" id="composerHint">按 Enter 发送，按住 Shift + Enter 换行 · 请勿发送密码等敏感信息</p>
         </footer>
       </section>
     </section>
@@ -88,7 +87,7 @@
   <div class="source-modal" id="sourceModal" hidden role="dialog" aria-modal="true" aria-labelledby="sourceTitle">
     <article class="source-card">
       <div class="source-card-head">
-        <h2 id="sourceTitle">知识来源</h2>
+        <h2 id="sourceTitle">服务参考依据</h2>
         <button class="source-close" id="sourceClose" type="button">关闭</button>
       </div>
       <div class="source-meta" id="sourceMeta"></div>
@@ -99,18 +98,17 @@
 
   <div class="ticket-modal" id="ticketModal" hidden role="dialog" aria-modal="true" aria-labelledby="ticketTitle">
     <form class="ticket-card" id="ticketForm">
-      <h2 id="ticketTitle">创建工单</h2>
-      <p>请确认反馈类别并亲自填写问题；只有点击“提交工单”才会保存。</p>
+      <h2 id="ticketTitle">登记服务工单</h2>
+      <p id="ticketIntro">请填写具体问题与诉求，提交后专属客服将尽快为您跟进处理。</p>
       <label class="ticket-field" for="ticketType">反馈类别 *</label>
-      <select id="ticketType" name="ticket_type" required>
-        <option value="" selected disabled>请选择反馈类别…</option>
+      <select id="ticketType" name="ticket_type" aria-describedby="ticketIntro" required>
+        <option value="" selected disabled>请选择反馈类别</option>
         <option value="售后">售后</option>
         <option value="投诉">投诉</option>
         <option value="咨询">咨询</option>
       </select>
       <label class="ticket-field" for="ticketDescription">反馈描述 *</label>
-      <textarea id="ticketDescription" name="description" maxlength="2000" required placeholder="请描述遇到的问题、相关订单号及希望如何处理；请勿填写密码。"></textarea>
-      <p class="ticket-help">数据库按 UTC 保存；提交成功后显示香港/北京时间（UTC+8）。</p>
+      <textarea id="ticketDescription" name="description" maxlength="2000" required placeholder="请描述遇到的问题、相关订单号及期望处理方式；请勿填写密码。"></textarea>
       <p class="ticket-error" id="ticketError" role="alert" hidden></p>
       <div class="ticket-actions">
         <button id="ticketCancel" type="button">取消</button>
@@ -122,12 +120,12 @@
   <div class="refund-modal" id="refundModal" hidden role="dialog" aria-modal="true" aria-labelledby="refundTitle">
     <form class="ticket-card" id="refundForm">
       <h2 id="refundTitle">提交退款申请</h2>
-      <p>这里只登记申请，状态为待人工审核；不会自动退款。标注为演示的订单是测试数据。</p>
-      <label class="ticket-field" for="refundOrder">关联订单 *</label>
+      <p id="refundIntro">提交后将进入售后审核流程，审核通过后原路退回（演示环境仅模拟登记，不涉及真实扣款）。</p>
+      <label class="ticket-field" for="refundOrder">关联订单</label>
       <input id="refundOrder" name="order_id" readonly required>
       <label class="ticket-field" for="refundReason">退款原因 *</label>
-      <select id="refundReason" name="reason" required>
-        <option value="" selected disabled>请选择固定原因类目…</option>
+      <select id="refundReason" name="reason" aria-describedby="refundIntro" required>
+        <option value="" selected disabled>请选择退款原因</option>
         <option value="七天无理由">七天无理由</option>
         <option value="商品破损">商品破损</option>
         <option value="质量问题">质量问题</option>
@@ -135,7 +133,7 @@
         <option value="其他">其他</option>
       </select>
       <label class="ticket-field" for="refundDescription">补充说明（选填）</label>
-      <textarea id="refundDescription" name="description" maxlength="1000" placeholder="可以补充问题经过；请勿填写密码。"></textarea>
+      <textarea id="refundDescription" name="description" maxlength="1000" placeholder="可补充商品情况或退换诉求，方便售后专员快速为您核实。"></textarea>
       <p class="ticket-error" id="refundError" role="alert" hidden></p>
       <div class="ticket-actions">
         <button id="refundCancel" type="button">取消</button>

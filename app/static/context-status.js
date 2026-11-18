@@ -1,4 +1,4 @@
-/* Background-only status: never gate sending, never reuse another conversation's response. */
+/* Subtle background conversation-organization indicator: never blocks user input. */
 (function () {
   "use strict";
   function create({ element, getContext, userId, intervalMs = 2000, timeoutMs = 4000 }) {
@@ -17,21 +17,28 @@
       const request = new AbortController();
       controller = request;
       const timeout = setTimeout(() => request.abort(), timeoutMs);
-      const isCurrent = () => !disposed && token === generation &&
-        getContext().id === context.id && getContext().epoch === context.epoch;
+      const isCurrent = () =>
+        !disposed &&
+        token === generation &&
+        getContext().id === context.id &&
+        getContext().epoch === context.epoch;
       try {
         const response = await fetch(`/api/conversations/${context.id}/context-status`, {
-          headers: { "X-Demo-User-Id": userId }, cache: "no-store", signal: request.signal,
+          headers: { "X-Demo-User-Id": userId },
+          cache: "no-store",
+          signal: request.signal,
         });
         if (!response.ok) throw new Error("context status unavailable");
         const status = await response.json();
         if (isCurrent()) element.hidden = status.status !== "summarizing";
       } catch (_) {
-        if (isCurrent()) element.hidden = true; // Status failure must not break chat.
+        if (isCurrent()) element.hidden = true;
       } finally {
         clearTimeout(timeout);
         if (controller === request) controller = null;
-        if (!disposed && token === generation) timer = setTimeout(() => poll(token), intervalMs);
+        if (!disposed && token === generation) {
+          timer = setTimeout(() => poll(token), intervalMs);
+        }
       }
     }
     function refresh() {

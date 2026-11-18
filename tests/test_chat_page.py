@@ -1,6 +1,7 @@
 """Browser chat page and modular static asset delivery tests."""
 
 from pathlib import Path
+import re
 
 from fastapi.testclient import TestClient
 
@@ -31,8 +32,18 @@ def test_chat_page_is_served_from_app_static_without_inline_scripts_or_styles() 
     assert response.content == CHAT_PAGE_PATH.read_bytes()
     assert "<style>" not in response.text
     assert "<script>" not in response.text
+    assert re.search(r"\sstyle\s*=", response.text) is None
+    assert re.search(r"\son[a-z]+\s*=", response.text, flags=re.IGNORECASE) is None
     assert 'maxlength="2400"' in response.text
-    assert '/static/chat-app.js' in response.text
+    assert "/static/chat-app.js" in response.text
+    for forbidden_copy in (
+        "数据库按 UTC 保存",
+        "请选择固定原因类目",
+        "正在压缩会话上下文",
+    ):
+        assert forbidden_copy not in response.text
+    assert "正在整理历史对话" in response.text
+    assert "请选择退款原因" in response.text
 
 
 def test_chat_markdown_and_app_assets_are_served_locally() -> None:
@@ -49,6 +60,9 @@ def test_chat_markdown_and_app_assets_are_served_locally() -> None:
             assert response.status_code == 200
             assert "javascript" in response.headers["content-type"]
             assert response.content == (CHAT_PAGE_PATH.parent / name).read_bytes()
+            if name == "chat-app.js":
+                assert "本轮未调用工具" not in response.text
+                assert "isComposing" in response.text
         assert client.get("/static/missing-file.js").status_code == 404
 
 
