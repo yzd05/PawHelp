@@ -306,7 +306,7 @@ class TurnNodes:
                 {
                     "kind": "select_order",
                     "message_id": state["user_message_id"],
-                    "message": "请选择要查询或处理的订单；标注为演示订单的记录是测试数据。",
+                    "message": "请先选择您需要查询或办理的订单；标有“演示订单”的记录仅供功能体验。",
                     "orders": choices,
                 }
             )
@@ -433,16 +433,16 @@ class TurnNodes:
     async def complaint(self, state: dict[str, Any]) -> dict[str, object]:
         logger.info("workflow node=complaint conversation=%s", self.turn.conversation_id)
         return {
-            "answer": "很抱歉给您带来不好的体验。您可以选择转人工客服，或提交工单，我们会认真处理。",
+            "answer": "非常抱歉给您带来了不好的购物体验，十分理解您的心情。您可以点击下方转接人工客服或提交售后工单，我们会第一时间为您优先跟进处理。",
             "actions": ["转人工", "建工单"],
         }
 
     async def smalltalk(self, state: dict[str, Any]) -> dict[str, object]:
         logger.info("workflow node=smalltalk conversation=%s", self.turn.conversation_id)
-        return {"answer": "您好，我是客服小猫！请问有什么可以帮您的？"}
+        return {"answer": "您好！欢迎光临，我是本店宠物客服助手。请问有什么可以帮您？商品咨询、订单物流或售后服务都可以随时告诉我。"}
 
     async def other(self, state: dict[str, Any]) -> dict[str, object]:
-        return {"answer": state.get("clarification_question") or "请补充您要查询的订单、商品或具体问题，我再帮您处理。"}
+        return {"answer": state.get("clarification_question") or "您好，为了更准确地帮您核实，请补充一下订单号、商品名称或您遇到的具体问题，我马上为您查看。"}
 
     async def log_result(self, state: dict[str, Any]) -> dict[str, object]:
         service, turn = self.service, self.turn

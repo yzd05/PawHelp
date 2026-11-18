@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>PawHelp 知识库工作台</title>
+  <title>知识库管理 · PawHelp</title>
   <link rel="stylesheet" href="/static/theme.css">
   <link rel="stylesheet" href="/static/navigation.css">
   <link rel="stylesheet" href="/static/kb.css">
@@ -14,132 +14,294 @@
     <header>
       <div class="brand">
         <div>
-          <h1>知识库工作台</h1>
-          <p class="subtitle">维护服务知识，检查索引状态与检索结果。</p>
+          <h1>知识库管理</h1>
+          <p class="subtitle">同步官方知识文档，维护知识条目与向量索引，在线验证检索召回效果。</p>
         </div>
       </div>
       <div class="header-actions">
+        <span id="dualWriteTag" class="tag tag-amber">检查索引中</span>
         <nav class="page-nav" aria-label="全局页面导航" data-app-navigation>
-          <a href="/">聊天</a>
+          <a href="/">客服</a>
           <a href="/kb" aria-current="page">知识库</a>
-          <a href="/rag-eval">评测</a>
+          <a href="/rag-eval">检索评测</a>
         </nav>
       </div>
     </header>
 
     <section class="metrics" aria-label="知识库概览">
-      <div class="metric"><strong id="materialCount">—</strong><span>知识材料</span></div>
-      <div class="metric"><strong id="chunkCount">—</strong><span>MySQL 知识块</span></div>
-      <div class="metric"><strong id="pendingCount">—</strong><span>pending 待补</span></div>
-      <div class="metric"><strong id="milvusCount">—</strong><span>Milvus 条数</span></div>
-      <div class="metric"><strong id="consistencyCount">—</strong><span>双写状态</span></div>
+      <div class="metric metric-spotlight">
+        <strong id="materialCount">—</strong>
+        <span>知识文档</span>
+      </div>
+      <div class="metric">
+        <strong id="chunkCount">—</strong>
+        <span>知识块总量</span>
+      </div>
+      <div class="metric">
+        <strong id="milvusCount">—</strong>
+        <span>已生效向量</span>
+      </div>
+      <div class="metric">
+        <strong id="pendingCount">—</strong>
+        <span>待建索引</span>
+      </div>
+      <div class="metric">
+        <strong id="consistencyCount" class="metric-status">—</strong>
+        <span>索引状态</span>
+      </div>
     </section>
 
     <div class="full-stack">
-      <section class="panel">
-        <div class="panel-head"><h2>01 · 建库材料</h2><span id="materialSummary" class="tag">读取中</span></div>
-        <p class="section-copy">预览服务端知识文档的切分结果，确认后再导入知识库。</p>
-        <div class="table-wrap">
+      <section class="panel" aria-labelledby="officialDocsHeading">
+        <div class="panel-head">
+          <h2 id="officialDocsHeading">官方文档同步</h2>
+          <span id="materialSummary" class="tag tag-sky">读取中</span>
+        </div>
+        <p class="section-copy">按章节语义切分官方政策条款、商品 FAQ 与售后手册，预览无误后同步至知识库。</p>
+
+        <div class="table-wrap" tabindex="0" role="region" aria-labelledby="officialDocsHeading">
           <table>
-            <thead><tr><th>文件</th><th>类型</th><th>字符</th><th>行</th><th>切块</th><th>关键条款</th><th>特征</th><th>操作</th></tr></thead>
-            <tbody id="materialList"><tr><td colspan="8">正在读取材料…</td></tr></tbody>
+            <thead>
+              <tr>
+                <th scope="col">知识文档</th>
+                <th scope="col">内容类型</th>
+                <th scope="col" class="num-col">字数</th>
+                <th scope="col" class="num-col">行数</th>
+                <th scope="col" class="num-col">知识块</th>
+                <th scope="col" class="num-col">关键条款</th>
+                <th scope="col">结构特征</th>
+                <th scope="col">操作</th>
+              </tr>
+            </thead>
+            <tbody id="materialList">
+              <tr><td colspan="8">正在读取知识文档…</td></tr>
+            </tbody>
           </table>
         </div>
+
+        <p id="calibrationDrift" class="callout-strip warning hidden" role="status"></p>
+
         <div class="inline-actions">
-          <button id="refreshMaterials" type="button">刷新材料清单</button>
-          <button id="syncMaterialsButton" class="coral" type="button">重建离线库（文档切块 → pending → Milvus）</button>
-          <span class="section-copy">只重建 Markdown，并清理旧 FAQ 表迁移数据；保留手工和历史对话知识。</span>
+          <button id="syncMaterialsButton" class="coral" type="button">同步官方文档</button>
+          <button id="refreshMaterials" type="button">刷新文档列表</button>
+          <button id="vectorizeButton" class="mint" type="button">补齐待建索引</button>
+          <span class="section-copy">仅更新官方文档对应知识块；人工录入、审核入库与对话提取条目自动保留并复核冲突。</span>
         </div>
-      </section>
 
-      <section class="panel">
-        <div class="panel-head"><h2>02 · 材料切块预览</h2><span id="previewCount" class="tag">请选择材料</span></div>
-        <div id="previewList" class="preview-list"><div class="empty">点击材料表里的“看切块”，先检查结构感知切分结果。</div></div>
-      </section>
-
-      <section class="panel">
-        <div class="panel-head"><h2>03 · 对话挖知识</h2><span class="tag">LLM 单批</span></div>
-        <p class="section-copy">从尚未处理的历史客服对话抽取 QA，先进入暂存表，再全局去重写入 knowledge_chunks。</p>
-        <div class="mini-metrics">
-          <div class="mini-metric"><strong id="miningUnprocessed">—</strong><span>待处理会话</span></div>
-          <div class="mini-metric"><strong id="miningExtracted">—</strong><span>暂存待去重</span></div>
-          <div class="mini-metric"><strong id="miningKept">—</strong><span>去重保留</span></div>
-          <div class="mini-metric"><strong id="miningDiscarded">—</strong><span>去重丢弃</span></div>
-          <div class="mini-metric"><strong id="miningBatches">—</strong><span>批次数</span></div>
-        </div>
-        <div class="inline-actions">
-          <button id="mineConversationsButton" class="coral" type="button">抽取下一批并去重入库</button>
-          <label class="checkbox"><input id="mineVectorize" type="checkbox" checked>入库后补齐向量</label>
-        </div>
-      </section>
-
-      <section class="panel">
-        <div class="panel-head"><h2>04 · Markdown 手工录入</h2><span class="tag">正文贴这里</span></div>
-        <p class="section-copy">按标题层级切块，识别关键条款和表格。预览会用“问法 + 正文”指纹检查库内重复。</p>
-        <form id="markdownForm">
-          <div class="row">
-            <label>内容类型<select name="content_type"><option value="policy">政策条款</option><option value="faq">商品 FAQ</option><option value="manual">售后手册</option></select></label>
-            <div class="inline-actions"><button id="fillMarkdownExample" type="button">填一段示例</button><button id="clearMarkdown" type="button">清空</button></div>
+        <details class="sub-drawer">
+          <summary><span>索引同步明细</span></summary>
+          <div class="mini-metrics">
+            <div class="mini-metric"><strong id="vectorDone">—</strong><span>已就绪</span></div>
+            <div class="mini-metric"><strong id="vectorPending">—</strong><span>待建索引</span></div>
+            <div class="mini-metric"><strong id="vectorMilvus">—</strong><span>在线向量数</span></div>
+            <div class="mini-metric"><strong id="vectorCollection">—</strong><span>索引集合</span></div>
           </div>
-          <textarea id="markdownInput" name="markdown" placeholder="# 一级标题&#10;&#10;## 二级标题&#10;&#10;在这里粘贴完整 Markdown 正文……" required></textarea>
-          <div class="inline-actions">
-            <button id="previewMarkdown" class="coral" type="button">切块预览（不写库）</button>
-            <button id="ingestMarkdown" type="submit">录入入库</button>
-            <label class="checkbox"><input name="vectorize_after" type="checkbox" checked>入库后顺手向量化</label>
+        </details>
+
+        <details id="previewDrawer" class="sub-drawer">
+          <summary>
+            <span>章节切块预览</span>
+            <span id="previewCount" class="tag">未选择文档</span>
+          </summary>
+          <div id="previewList" class="preview-list">
+            <div class="empty">点击上方表格中的“预览切块”，核对各章节切分边界与关键条款标记。</div>
           </div>
-        </form>
-        <div id="markdownSummary" class="preview-summary"></div>
-        <div id="markdownPreview" class="table-wrap"></div>
+        </details>
       </section>
 
-      <section class="panel">
-        <div class="panel-head"><h2>05 · 向量化与双写</h2><span id="dualWriteTag" class="tag">检查中</span></div>
-        <p class="section-copy">MySQL 保存权威原文，Milvus 保存向量和检索字段。故障中断后点击补齐会只处理 pending。</p>
-        <div class="mini-metrics">
-          <div class="mini-metric"><strong id="vectorPending">—</strong><span>pending 待补</span></div>
-          <div class="mini-metric"><strong id="vectorDone">—</strong><span>done 已向量化</span></div>
-          <div class="mini-metric"><strong id="vectorMilvus">—</strong><span>Milvus 条数</span></div>
-          <div class="mini-metric"><strong id="vectorCollection">—</strong><span>集合</span></div>
+      <section class="panel" aria-labelledby="chunkManagerHeading">
+        <div class="panel-head">
+          <h2 id="chunkManagerHeading">知识条目管理</h2>
+          <button id="jumpToCreate" class="coral" type="button">＋ 新增问答条目</button>
         </div>
-        <p id="calibrationDrift" class="section-copy calibration-drift hidden"></p>
-        <div class="inline-actions"><button id="vectorizeButton" class="mint" type="button">补齐 pending 向量</button></div>
+        <p class="section-copy">分页检视已入库知识块，按索引状态或关键词筛选，支持在线修订与删除。</p>
+
+        <search class="filter-bar" aria-label="知识条目筛选工具栏">
+          <div class="segmented-toolbar" role="toolbar" focusgroup="toolbar wrap" aria-label="索引状态筛选">
+            <div class="segmented-group" role="group" aria-label="按索引状态筛选">
+              <button type="button" data-chunk-status="" aria-pressed="true">全部</button>
+              <button type="button" data-chunk-status="done" aria-pressed="false">已就绪</button>
+              <button type="button" data-chunk-status="pending" aria-pressed="false">待建索引</button>
+              <button type="button" data-chunk-status="failed" aria-pressed="false">索引异常</button>
+            </div>
+          </div>
+          <div class="filter-controls">
+            <label class="sr-only" for="statusFilter">索引状态筛选</label>
+            <select id="statusFilter" class="sr-only" tabindex="-1" aria-hidden="true">
+              <option value="">全部</option>
+              <option value="done">已就绪</option>
+              <option value="pending">待建索引</option>
+              <option value="failed">索引异常</option>
+            </select>
+            <label class="search-input-wrap" for="chunkKeyword">
+              <span class="sr-only">筛选本页知识条目</span>
+              <input id="chunkKeyword" type="search" autocorrect="off" autocapitalize="none" spellcheck="false" placeholder="筛选本页分类、问法或答案…">
+            </label>
+            <button id="refreshChunks" type="button">刷新</button>
+          </div>
+        </search>
+
+        <div id="chunkList" class="chunk-list">
+          <div class="empty">正在读取知识条目…</div>
+        </div>
+
+        <div class="pagination" aria-label="知识条目分页">
+          <span id="pageSummary" class="page-summary" aria-live="polite">第 1 / 1 页 · 共 0 条</span>
+          <label class="page-size" for="pageSize">每页
+            <select id="pageSize">
+              <option value="10">10 条</option>
+              <option value="20">20 条</option>
+              <option value="50">50 条</option>
+            </select>
+          </label>
+          <button id="prevPage" type="button">← 上一页</button>
+          <button id="nextPage" type="button">下一页 →</button>
+        </div>
       </section>
 
-      <section class="panel">
-        <div class="panel-head"><h2>06 · 检索自测</h2><span class="tag">可切换路线</span></div>
-        <form id="searchForm" class="search-controls">
-          <input name="query" placeholder="试试：邮费是多少" required>
-          <label>路线<select name="strategy"><option value="dense">dense 向量单路</option><option value="bm25">BM25 关键词</option><option value="hybrid">混合 RRF</option><option value="hybrid_rerank" selected>混合 + Rerank</option></select></label>
-          <label>Top‑K<input name="top_k" type="number" min="1" max="20" value="5"></label>
-          <button class="blue" type="submit">检索</button>
-        </form>
-        <div class="query-examples"><button type="button">邮费是多少</button><button type="button">运费怎么算</button><button type="button">MH-LP100 适合多大的猫</button><button type="button">猫粮过期了能退吗</button></div>
-        <div id="searchMeta" class="search-meta"></div>
+      <section class="panel" aria-labelledby="searchTestHeading">
+        <div class="panel-head">
+          <h2 id="searchTestHeading">检索效果在线测试</h2>
+          <span class="tag tag-sky">实时召回对比</span>
+        </div>
+
+        <search aria-label="知识检索在线测试">
+          <form id="searchForm" class="search-controls" aria-labelledby="searchTestHeading">
+            <label class="field-stack" for="kbSearchQuery">
+              <span>买家真实问法</span>
+              <input id="kbSearchQuery" name="query" type="search" autocorrect="off" autocapitalize="none" spellcheck="false" placeholder="输入测试问法，如：邮费是多少" required>
+            </label>
+            <label class="field-stack" for="kbSearchStrategy">
+              <span>检索路线</span>
+              <select id="kbSearchStrategy" name="strategy">
+                <option value="hybrid_rerank" selected>混合 + Rerank</option>
+                <option value="hybrid">混合 RRF</option>
+                <option value="dense">向量检索</option>
+                <option value="bm25">BM25 关键词</option>
+              </select>
+            </label>
+            <label class="field-stack" for="kbSearchTopK">
+              <span>返回条数</span>
+              <input id="kbSearchTopK" name="top_k" type="number" min="1" max="20" value="5">
+            </label>
+            <button class="blue" type="submit">检索测试</button>
+          </form>
+        </search>
+
+        <div class="query-examples" aria-label="常用测试问法">
+          <button type="button">邮费是多少</button>
+          <button type="button">运费怎么算</button>
+          <button type="button">MH-LP100 适合多大的猫</button>
+          <button type="button">猫粮过期了能退吗</button>
+        </div>
+        <div id="searchMeta" class="search-meta" role="status" aria-live="polite"></div>
         <div id="searchResults" class="search-results"></div>
       </section>
 
-      <section id="manualEditor" class="panel">
-        <div class="panel-head"><h2>07 · 单条录入 / 编辑</h2><span class="tag">兼容原能力</span></div>
-        <form id="manualForm">
-          <div class="row"><label>分类<input name="category" maxlength="255" placeholder="例如：配送服务" required></label><label>内容类型<select name="content_type"><option value="manual">售后手册</option><option value="faq">商品 FAQ</option><option value="policy">政策条款</option></select></label></div>
-          <label>用户问法<input name="questions" placeholder="例如：邮费在哪里看？" required></label>
-          <label>标准答案<textarea name="answer" placeholder="输入可以直接支持客服回答的完整内容" required></textarea></label>
-          <label>章节路径（可选）<input name="section_path" maxlength="512" placeholder="例如：配送服务 / 费用说明"></label>
-          <label class="checkbox"><input name="is_key_clause" type="checkbox">这是关键条款</label>
-          <div class="card-actions"><button id="manualSubmit" class="coral" type="submit">＋ 写入待向量化知识</button><button id="cancelEdit" class="hidden" type="button">取消编辑</button></div>
-        </form>
-      </section>
+      <div class="ops-split">
+        <section id="manualEditor" class="panel" aria-labelledby="manualEditorHeading">
+          <div class="panel-head">
+            <h2 id="manualEditorHeading">新增问答条目</h2>
+            <span id="editorModeBadge" class="tag">单条录入</span>
+          </div>
+          <p class="section-copy">录入经核实的标准问答，写入前自动校验重复与政策冲突。</p>
 
-      <section class="panel">
-        <div class="panel-head"><h2>08 · 已入库知识</h2><div class="toolbar"><select id="statusFilter" aria-label="向量化状态筛选"><option value="">全部状态</option><option value="pending">pending</option><option value="done">done</option><option value="failed">failed</option></select><button id="refreshChunks" type="button">刷新</button></div></div>
-        <p class="section-copy">分页查看权威知识块，支持按向量化状态筛选、编辑或删除。</p>
-        <div id="chunkList" class="chunk-list"><div class="empty">正在读取知识块…</div></div>
-        <div class="pagination" aria-label="已入库知识分页"><span id="pageSummary" class="page-summary" aria-live="polite">第 1 / 1 页 · 共 0 条</span><label class="page-size">每页<select id="pageSize" aria-label="每页显示条数"><option value="10">10 条</option><option value="20">20 条</option><option value="50">50 条</option></select></label><button id="prevPage" type="button">← 上一页</button><button id="nextPage" type="button">下一页 →</button></div>
-      </section>
+          <form id="manualForm" aria-labelledby="manualEditorHeading">
+            <div class="row">
+              <label for="manualCategory">分类
+                <input id="manualCategory" name="category" maxlength="255" placeholder="例如：配送服务" required>
+              </label>
+              <label for="manualContentType">内容类型
+                <select id="manualContentType" name="content_type">
+                  <option value="manual">售后手册</option>
+                  <option value="faq">商品 FAQ</option>
+                  <option value="policy">政策条款</option>
+                </select>
+              </label>
+            </div>
+            <label for="manualQuestions">真实问法
+              <input id="manualQuestions" name="questions" placeholder="例如：邮费在哪里看？" required>
+            </label>
+            <label for="manualAnswer">标准答案
+              <textarea id="manualAnswer" name="answer" placeholder="填写可独立支撑客服回复的完整内容" required></textarea>
+            </label>
+            <label for="manualSectionPath">章节路径
+              <input id="manualSectionPath" name="section_path" maxlength="512" placeholder="选填：配送服务 / 费用说明">
+            </label>
+            <label class="checkbox" for="manualKeyClause">
+              <input id="manualKeyClause" name="is_key_clause" type="checkbox">
+              <span>设为关键条款</span>
+            </label>
+            <div class="card-actions">
+              <button id="manualSubmit" class="coral" type="submit">＋ 保存知识条目</button>
+              <button id="cancelEdit" class="hidden" type="button">取消编辑</button>
+            </div>
+          </form>
+
+          <details class="sub-drawer">
+            <summary><span>Markdown 批量导入</span></summary>
+            <div class="drawer-body">
+              <p class="section-copy">按标题层级自动切分知识块，识别表格与关键条款，并在入库前预检重复条目。</p>
+              <form id="markdownForm" aria-label="Markdown 批量导入表单">
+                <div class="row">
+                  <label for="markdownContentType">内容类型
+                    <select id="markdownContentType" name="content_type">
+                      <option value="policy">政策条款</option>
+                      <option value="faq">商品 FAQ</option>
+                      <option value="manual">售后手册</option>
+                    </select>
+                  </label>
+                  <div class="inline-actions">
+                    <button id="fillMarkdownExample" type="button">填入示例</button>
+                    <button id="clearMarkdown" type="button">清空</button>
+                  </div>
+                </div>
+                <label for="markdownInput">Markdown 正文
+                  <textarea id="markdownInput" name="markdown" placeholder="# 一级标题&#10;&#10;## 二级标题&#10;&#10;在此粘贴完整 Markdown 正文…" required></textarea>
+                </label>
+                <div class="inline-actions">
+                  <button id="previewMarkdown" type="button">预览切块</button>
+                  <button id="ingestMarkdown" class="coral" type="submit">确认导入</button>
+                  <label class="checkbox" for="markdownVectorizeAfter">
+                    <input id="markdownVectorizeAfter" name="vectorize_after" type="checkbox" checked>
+                    <span>导入后建立索引</span>
+                  </label>
+                </div>
+              </form>
+              <div id="markdownSummary" class="preview-summary"></div>
+              <div id="markdownPreview" class="table-wrap" tabindex="0" role="region" aria-label="Markdown 切块预览"></div>
+            </div>
+          </details>
+        </section>
+
+        <section class="panel" aria-labelledby="miningHeading">
+          <div class="panel-head">
+            <h2 id="miningHeading">历史对话知识提取</h2>
+            <span class="tag tag-lime">按批查重</span>
+          </div>
+          <p class="section-copy">从已结束的客服会话中抽取知识候选，经全局去重与政策一致性核验后写入知识库。</p>
+
+          <div class="mini-metrics mining-grid">
+            <div class="mini-metric"><strong id="miningUnprocessed">—</strong><span>待处理客服会话</span></div>
+            <div class="mini-metric"><strong id="miningExtracted">—</strong><span>待核验知识候选</span></div>
+            <div class="mini-metric"><strong id="miningKept">—</strong><span>采纳入库</span></div>
+            <div class="mini-metric"><strong id="miningDiscarded">—</strong><span>重复或冲突过滤</span></div>
+            <div class="mini-metric"><strong id="miningBatches">—</strong><span>已完成批次</span></div>
+          </div>
+
+          <div class="inline-actions">
+            <button id="mineConversationsButton" class="coral" type="button">提取下一批对话知识</button>
+            <label class="checkbox" for="mineVectorize">
+              <input id="mineVectorize" type="checkbox" checked>
+              <span>入库后建立索引</span>
+            </label>
+          </div>
+        </section>
+      </div>
     </div>
   </main>
 
-  <div id="toast" class="toast hidden" role="status"></div>
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
   <script src="/static/operations-base.js"></script>
   <script src="/static/kb.js"></script>

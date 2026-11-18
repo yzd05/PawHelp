@@ -41,8 +41,8 @@ _VALID_ACTION_TAGS = (
     "[建议选项:转人工,转人工]",
     "[建议选项:建工单,建工单]",
 )
-_LIMIT_REPLY = "抱歉，本轮处理已达到安全上限，暂未完成。请缩小问题范围后重试，或联系人工客服。"
-_FRESH_QUERY_REPLY = "抱歉，本轮实时查询尚未完成，无法确认最新结果。请稍后重试或联系人工客服。"
+_LIMIT_REPLY = "非常抱歉，您咨询的事项较为复杂，本轮处理已达到安全上限，暂未全部完成。建议您精简问题后重试，或点击下方转接人工客服为您跟进。"
+_FRESH_QUERY_REPLY = "非常抱歉，本轮实时查询尚未完成，暂时无法为您确认最新状态。请您稍后重试，或转接人工客服协助核实。"
 
 
 def limit_reply(trace: list[dict[str, Any]], *, has_required_query: bool = False) -> str:
@@ -253,7 +253,7 @@ class ToolAgentNodes:
             logger.exception("agent partial failure conversation=%s; completed observations retained", self.turn.conversation_id)
             return {
                 **self._final(
-                    "抱歉，部分查询未能完成。已完成的查询记录已保留，请稍后重试或联系人工客服。",
+                    "非常抱歉，部分查询暂时未能完成。已查到的记录已为您保留，请您稍后重试或转接人工客服继续处理。",
                     ["转人工"],
                     [],
                     writer,
@@ -275,7 +275,7 @@ class ToolAgentNodes:
         if recalling and calls:
             return {
                 **self._final(
-                    "本轮只回顾当前会话，不执行新的业务查询；暂时无法从现有记录确认，请补充具体信息。",
+                    "当前正在为您回顾本轮对话记录，暂不执行新的业务查询；现有记录中暂时无法确认该信息，您可以直接告诉我需要新查询的订单或问题。",
                     [],
                     [],
                     writer,
@@ -331,7 +331,7 @@ class ToolAgentNodes:
                 already_streamed = False
             if state["intent"] == "退款退货" and state.get("refund_available") and sources:
                 actions.append("申请退款")
-            final_answer = answer or "请补充一下您的具体问题。"
+            final_answer = answer or "请您补充一下具体想咨询的商品、订单或售后问题，我马上为您解答。"
             return {
                 **self._final(final_answer, actions, sources, writer, already_streamed=already_streamed),
                 **telemetry,
@@ -463,11 +463,11 @@ class ToolAgentNodes:
             if name == "create_ticket" and previewed:
                 ticket_finished = True
                 if result.ok:
-                    ticket_answer = "工单已创建：" + json.loads(result.content)["ticket_no"] + "（待处理）。"
+                    ticket_answer = "工单已创建：" + json.loads(result.content)["ticket_no"] + "（待处理），客服专员会尽快为您跟进。"
                 elif not confirmation:
-                    ticket_answer = "已取消建工单，本次没有提交。"
+                    ticket_answer = "好的，已取消本次工单提交。如后续还有其他问题，随时告诉我。"
                 else:
-                    ticket_answer = "工单提交结果暂时无法确认，未自动重试。请先核对工单记录或联系人工客服，不要重复提交。"
+                    ticket_answer = "抱歉，工单提交结果暂时无法确认，为避免重复建单未自动重试。建议您先核对工单记录或联系人工客服确认。"
         self.nodes.agent_context = context
         output: dict[str, Any] = {
             "trace": [*state.get("trace", []), *traces],

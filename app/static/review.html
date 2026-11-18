@@ -1,12 +1,92 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>数据飞轮待审 · PawHelp</title><link rel="stylesheet" href="/static/theme.css"><link rel="stylesheet" href="/static/operations.css"><link rel="stylesheet" href="/static/navigation.css"><script src="/static/navigation.js" defer></script></head>
-<body><main class="review-page">
-<header><div class="operations-brand"><h1>知识审核</h1><p class="subtitle">核实高频问题与检索证据，补充可发布的服务知识。</p></div><nav data-app-navigation></nav></header>
-<section><div class="toolbar"><h2>飞轮处理</h2><button id="load">刷新列表</button></div>
-<p class="muted">模型生成的建议答案需审核后发布。标准化与查重会调用模型，执行前需确认费用。</p>
-<button id="process">标准化并查重</button><p id="status" role="status" aria-live="polite">正在加载待审队列…</p></section>
-<section><div class="toolbar queue-toolbar"><h2>知识缺口</h2><div class="status-tabs" role="group" aria-label="审核状态"><button data-status="待审" aria-pressed="true">待审</button><button data-status="通过" aria-pressed="false">通过</button><button data-status="驳回" aria-pressed="false">驳回</button><button data-status="全部" aria-pressed="false">全部</button></div><label>排序 <select id="sort"><option value="frequency">高频优先</option><option value="newest">最新优先</option></select></label></div>
-<details class="review-guidance"><summary>审核说明</summary>对照原话与检索证据，区分知识缺失和检索遗漏。排除测试或不当内容，核实政策与活动有效期，优先处理高频缺口。已驳回问题再次出现时累计次数，不自动恢复待审。</details>
-<p id="count"></p><div id="list"></div><div class="toolbar"><button id="prev" disabled>上一页</button><span id="page"></span><button id="next" disabled>下一页</button></div></section>
-<dialog id="detail" aria-labelledby="question"><h2 id="question"></h2><p id="detailMeta"></p><p class="notice">请核实建议答案及适用条件。确认后将发布到知识库。</p><label>正式答案<textarea id="approved" maxlength="10000" placeholder="填写经核实的服务答案"></textarea></label><details><summary>用户原话与检索证据</summary><div id="originals"></div></details><p id="detailStatus" role="status" aria-live="polite"></p><div class="toolbar"><button id="approve" class="approve">审核通过并发布</button><button id="publish">重试向量同步</button><button id="close">取消</button></div></dialog>
-</main><script src="/static/operations-base.js"></script><script src="/static/operations.js"></script></body></html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>知识审核 · PawHelp</title>
+  <link rel="stylesheet" href="/static/theme.css">
+  <link rel="stylesheet" href="/static/navigation.css">
+  <link rel="stylesheet" href="/static/operations.css">
+  <script src="/static/navigation.js" defer></script>
+</head>
+<body>
+  <main class="review-page">
+    <header>
+      <div class="operations-brand">
+        <h1>知识审核</h1>
+        <p class="subtitle">核实高频盲区提问与检索快照，修订标准答案后发布至知识库。</p>
+      </div>
+      <nav data-app-navigation></nav>
+    </header>
+
+    <section class="flywheel-panel" aria-labelledby="flywheelHeading">
+      <div class="toolbar flywheel-head">
+        <div>
+          <h2 id="flywheelHeading">待归并买家提问</h2>
+          <p class="muted">将客服未命中依据或买家反馈未解决的真实问法聚类查重，生成待审核知识候选。</p>
+        </div>
+        <div class="toolbar">
+          <button id="load" type="button">刷新列表</button>
+          <button id="process" class="coral" type="button">归并新提问</button>
+        </div>
+      </div>
+      <p id="status" class="status-banner" role="status" aria-live="polite">正在加载审核工单…</p>
+    </section>
+
+    <section aria-labelledby="queueHeading">
+      <div class="toolbar queue-toolbar">
+        <h2 id="queueHeading">审核工单队列</h2>
+        <div class="status-toolbar" role="toolbar" focusgroup="toolbar wrap" aria-label="审核状态筛选">
+          <div class="status-tabs" role="group" aria-label="审核状态">
+            <button type="button" data-status="待审" aria-pressed="true">待审核</button>
+            <button type="button" data-status="通过" aria-pressed="false">已采纳</button>
+            <button type="button" data-status="驳回" aria-pressed="false">已忽略</button>
+            <button type="button" data-status="全部" aria-pressed="false">全部</button>
+          </div>
+        </div>
+        <label for="sort">排序
+          <select id="sort">
+            <option value="frequency">高频优先</option>
+            <option value="newest">最新优先</option>
+          </select>
+        </label>
+      </div>
+
+      <details class="review-guidance">
+        <summary>审核要点</summary>
+        <p>对照买家真实问法与当时命中的知识块快照，核实政策时效与适用条件后再发布。测试内容或无效提问可直接忽略；已忽略问题后续再次出现仅累加频次，不会自动恢复待审核。</p>
+      </details>
+
+      <p id="count"></p>
+      <div id="list"></div>
+
+      <div class="toolbar pagination-bar">
+        <button id="prev" type="button" disabled>← 上一页</button>
+        <span id="page"></span>
+        <button id="next" type="button" disabled>下一页 →</button>
+      </div>
+    </section>
+
+    <dialog id="detail" aria-labelledby="question">
+      <h2 id="question"></h2>
+      <p id="detailMeta"></p>
+      <p class="review-callout">核实下方标准答案与适用条件，确认无误后直接同步至在线知识库。</p>
+      <label for="approved">标准答案
+        <textarea id="approved" maxlength="10000" placeholder="填写经核实的标准服务答案"></textarea>
+      </label>
+      <details class="dialog-evidence" open>
+        <summary>买家真实问法与检索快照</summary>
+        <div id="originals"></div>
+      </details>
+      <p id="detailStatus" role="status" aria-live="polite"></p>
+      <div class="toolbar">
+        <button id="approve" type="button" class="approve">采纳并发布到知识库</button>
+        <button id="publish" type="button">重试索引同步</button>
+        <button id="close" type="button">关闭</button>
+      </div>
+    </dialog>
+  </main>
+  <script src="/static/operations-base.js"></script>
+  <script src="/static/operations.js"></script>
+</body>
+</html>
