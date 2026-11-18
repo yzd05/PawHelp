@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.config import Settings
-from app.main import CHAT_PAGE_PATH, create_app
+from app.main import CHAT_PAGE_PATH, STRICT_CSP, create_app
 from tests.fakes import FakeChatModel
 
 DATABASE_URL = "mysql+asyncmy://pawhelp:pawhelp@127.0.0.1:3306/pawhelp"
@@ -50,3 +50,28 @@ def test_chat_markdown_and_app_assets_are_served_locally() -> None:
             assert "javascript" in response.headers["content-type"]
             assert response.content == (CHAT_PAGE_PATH.parent / name).read_bytes()
         assert client.get("/static/missing-file.js").status_code == 404
+
+
+def test_strict_csp_and_security_headers_enforce_on_pages_and_exempt_openapi_docs() -> None:
+    app = create_app(settings=_settings(), model=FakeChatModel())
+    assert app.version == "1.1.0"
+
+    with TestClient(app) as client:
+        for path in ("/", "/kb", "/rag-eval", "/review", "/observability", "/topics", "/static/chat-app.js", "/health"):
+            resp = client.get(path)
+            assert resp.headers["content-security-policy"] == STRICT_CSP, path
+            assert "unsafe-inline" not in resp.headers["content-security-policy"]
+            assert "unsafe-eval" not in resp.headers["content-security-policy"]
+            assert resp.headers["x-content-type-options"] == "nosniff"
+            assert resp.headers["x-frame-options"] == "DENY"
+            assert resp.headers["referrer-policy"] == "same-origin"
+
+        for doc_path in ("/docs", "/redoc", "/openapi.json"):
+            doc_resp = client.get(doc_path)
+            assert doc_resp.status_code == 200
+            assert "content-security-policy" not in doc_resp.headers
+            assert doc_resp.headers["x-content-type-options"] == "nosniff"
+            assert doc_resp.headers["x-frame-options"] == "DENY"
+            assert doc_resp.headers["referrer-policy"] == "same-origin"
+            if doc_path == "/openapi.json":
+                assert doc_resp.json()["info"]["version"] == "1.1.0"

@@ -2,14 +2,17 @@
 
 import asyncio
 from collections.abc import Awaitable, Callable
+import inspect
 import json
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.auth import authorize, bind_admin_settings
 from app.database.models import FaithCase
+from app.evaluation.pipeline import EvaluationPipeline
 from app.evaluation.runtime import DEFAULT_EVAL_CASES_PATH, report_dataset_alignment
 from app.repositories.quality import (
     FaithCaseConflict,
@@ -22,18 +25,38 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 RAG_EVAL_CASES_PATH = PROJECT_ROOT / DEFAULT_EVAL_CASES_PATH
 RAG_EVAL_REPORT_DIR = PROJECT_ROOT / "reports"
 RAG_EVAL_REPORT_PATH = RAG_EVAL_REPORT_DIR / "retrieval-evaluation.json"
+RAG_EVAL_BASELINE_REPORT_PATH = (
+    RAG_EVAL_REPORT_DIR / "retrieval-evaluation.baseline.json"
+)
 RagEvalRunner = Callable[[bool], Awaitable[dict[str, object]]]
 
 
-def _read_rag_eval_report() -> dict[str, object]:
-    if not RAG_EVAL_REPORT_PATH.is_file():
+def _read_rag_eval_report(runtime_root: Path | None = None) -> dict[str, object]:
+    if runtime_root is not None:
+        report_dir = runtime_root / "reports"
+        report_path = report_dir / "retrieval-evaluation.json"
+        baseline_path = report_dir / "retrieval-evaluation.baseline.json"
+    else:
+        report_path = RAG_EVAL_REPORT_PATH
+        baseline_path = RAG_EVAL_BASELINE_REPORT_PATH
+
+    is_baseline = False
+    if report_path.is_file():
+        target_path = report_path
+    elif baseline_path.is_file():
+        target_path = baseline_path
+        is_baseline = True
+    else:
         raise HTTPException(
             status_code=404, detail={"code": "rag_eval_report_not_found"}
         )
+
     try:
-        payload = json.loads(RAG_EVAL_REPORT_PATH.read_text(encoding="utf-8"))
+        payload = json.loads(target_path.read_text(encoding="utf-8"))
         if not isinstance(payload, dict):
             raise ValueError("report must be an object")
+        if is_baseline:
+            return {**payload, "is_baseline_snapshot": True}
         return payload
     except (OSError, ValueError) as error:
         raise HTTPException(
@@ -41,12 +64,21 @@ def _read_rag_eval_report() -> dict[str, object]:
         ) from error
 
 
-def _load_aligned_rag_eval_report() -> dict[str, object]:
-    payload = dict(_read_rag_eval_report())
+def _call_read_rag_eval_report(runtime_root: Path | None = None) -> dict[str, object]:
+    if runtime_root is None or not inspect.signature(_read_rag_eval_report).parameters:
+        return _read_rag_eval_report()
+    return _read_rag_eval_report(runtime_root)
+
+
+def _load_aligned_rag_eval_report(runtime_root: Path | None = None) -> dict[str, object]:
+    payload = dict(_call_read_rag_eval_report(runtime_root))
+    cases_path = (
+        runtime_root / DEFAULT_EVAL_CASES_PATH
+        if runtime_root is not None and (runtime_root / DEFAULT_EVAL_CASES_PATH).is_file()
+        else RAG_EVAL_CASES_PATH
+    )
     try:
-        payload["dataset_alignment"] = report_dataset_alignment(
-            payload, RAG_EVAL_CASES_PATH
-        )
+        payload["dataset_alignment"] = report_dataset_alignment(payload, cases_path)
     except (OSError, ValueError):
         payload["dataset_alignment"] = {
             "status": "unverified",
@@ -89,11 +121,12 @@ def _faith_review_state(
 
 
 def evaluation_router(
-    active_session_factory,
-    pipeline,
+    active_session_factory: async_sessionmaker[AsyncSession],
+    pipeline: EvaluationPipeline,
     rag_eval_lock: asyncio.Lock,
     active_rag_eval_runner: RagEvalRunner,
     settings: object | None = None,
+    runtime_root: Path | None = None,
 ) -> APIRouter:
     router = APIRouter(
         tags=["evaluation"],
@@ -102,12 +135,12 @@ def evaluation_router(
 
     @router.get("/v1/rag-eval/report", response_class=JSONResponse)
     async def rag_eval_report() -> JSONResponse:
-        payload = await asyncio.to_thread(_load_aligned_rag_eval_report)
+        payload = await asyncio.to_thread(_load_aligned_rag_eval_report, runtime_root)
         return JSONResponse(payload, headers={"Cache-Control": "no-store"})
 
     @router.get("/v1/rag-eval/faith-cases", response_class=JSONResponse)
     async def rag_eval_faith_cases() -> JSONResponse:
-        report = await asyncio.to_thread(_read_rag_eval_report)
+        report = await asyncio.to_thread(_call_read_rag_eval_report, runtime_root)
         flagged = _flagged_faith_rows(report)
         try:
             async with active_session_factory() as session:
@@ -134,7 +167,7 @@ def evaluation_router(
         if rag_eval_lock.locked():
             raise HTTPException(status_code=409, detail={"code": "rag_eval_running"})
         async with rag_eval_lock:
-            report = await asyncio.to_thread(_read_rag_eval_report)
+            report = await asyncio.to_thread(_call_read_rag_eval_report, runtime_root)
             snapshot = _flagged_faith_rows(report).get(eval_id)
             if snapshot is None:
                 raise HTTPException(

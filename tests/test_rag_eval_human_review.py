@@ -6,8 +6,9 @@ from types import SimpleNamespace
 from fastapi.testclient import TestClient
 
 import app.api.evaluation as evaluation_module
+from app.api.pages import RAG_EVAL_PAGE_PATH
 from app.config import Settings
-from app.main import RAG_EVAL_PAGE_PATH, create_app
+from app.main import create_app
 from tests.fakes import FakeChatModel
 
 LOCAL_ADMIN_HEADERS = {"X-PawHelp-Local-Admin": "1"}

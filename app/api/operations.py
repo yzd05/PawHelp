@@ -1,14 +1,16 @@
 """Customer feedback and local-only, same-origin operations access."""
 
 import asyncio
+from collections.abc import Awaitable, Callable
 import logging
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.auth import (
     _local_page_request,
@@ -16,8 +18,10 @@ from app.api.auth import (
     bind_admin_settings,
     local_page_request,
 )
+from app.config import Settings
 from app.evaluation.dashboard import calibration_report, trend_report
-from app.evaluation.pipeline import cost_by_intent
+from app.evaluation.pipeline import EvaluationPipeline, cost_by_intent
+from app.flywheel import Flywheel
 from app.repositories.conversations import ConversationNotFound
 from app.schemas import ReviewRequest
 from app.services.knowledge_admin import KnowledgeCheckUnavailable
@@ -38,7 +42,12 @@ class FeedbackRequest(BaseModel):
     vote: Literal["up", "down"]
 
 
-def operations_router(settings, sessions, flywheel, pipeline) -> APIRouter:
+def operations_router(
+    settings: Settings,
+    sessions: async_sessionmaker[AsyncSession],
+    flywheel: Flywheel,
+    pipeline: EvaluationPipeline,
+) -> APIRouter:
     router = APIRouter()
     admin = APIRouter(
         dependencies=[Depends(bind_admin_settings(settings)), Depends(authorize)]
@@ -50,7 +59,7 @@ def operations_router(settings, sessions, flywheel, pipeline) -> APIRouter:
         message_id: int,
         request: FeedbackRequest,
         user_id: Annotated[UUID, Header(alias="X-Demo-User-Id")],
-    ):
+    ) -> dict[str, Any]:
         try:
             return await flywheel.feedback(
                 conversation_id, message_id, str(user_id), request.vote
@@ -63,27 +72,27 @@ def operations_router(settings, sessions, flywheel, pipeline) -> APIRouter:
         status: Literal["全部", "待审", "通过", "驳回"] = "待审",
         offset: int = 0,
         sort: Literal["frequency", "newest"] = "frequency",
-    ):
+    ) -> dict[str, Any]:
         if offset < 0:
             raise HTTPException(status_code=422, detail="offset must be non-negative")
         return await flywheel.list(status, offset, sort)
 
     @admin.post("/api/review/process")
-    async def process():
+    async def process() -> dict[str, Any]:
         try:
             return await flywheel.process()
         except ValueError as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
 
     @admin.get("/api/review/{review_id}")
-    async def detail(review_id: int):
+    async def detail(review_id: int) -> dict[str, Any]:
         try:
             return await flywheel.detail(review_id)
         except LookupError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
 
     @admin.post("/api/review/{review_id}/approve")
-    async def approve(review_id: int, request: ReviewRequest):
+    async def approve(review_id: int, request: ReviewRequest) -> dict[str, Any]:
         try:
             return await flywheel.review(review_id, request.approved_answer)
         except LookupError as error:
@@ -94,7 +103,7 @@ def operations_router(settings, sessions, flywheel, pipeline) -> APIRouter:
             raise HTTPException(status_code=503, detail=str(error)) from error
 
     @admin.post("/api/review/{review_id}/reject")
-    async def reject(review_id: int):
+    async def reject(review_id: int) -> dict[str, Any]:
         try:
             return await flywheel.review(review_id, reject=True)
         except LookupError as error:
@@ -103,14 +112,14 @@ def operations_router(settings, sessions, flywheel, pipeline) -> APIRouter:
             raise HTTPException(status_code=409, detail=str(error)) from error
 
     @admin.post("/api/review/{review_id}/publish")
-    async def publish(review_id: int):
+    async def publish(review_id: int) -> dict[str, Any]:
         try:
             return await flywheel.publish(review_id)
         except ValueError as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
 
     @admin.get("/api/observability")
-    async def overview(days: Annotated[int, Query(ge=1, le=90)] = 7):
+    async def overview(days: Annotated[int, Query(ge=1, le=90)] = 7) -> dict[str, Any]:
         history = await pipeline.history()
         calibration = await asyncio.to_thread(
             calibration_report,
@@ -133,7 +142,7 @@ def operations_router(settings, sessions, flywheel, pipeline) -> APIRouter:
         }
 
     @admin.post("/api/observability/calibration/analyze")
-    async def analyze_calibration():
+    async def analyze_calibration() -> dict[str, Any]:
         return await asyncio.to_thread(
             calibration_report,
             settings,
@@ -141,7 +150,7 @@ def operations_router(settings, sessions, flywheel, pipeline) -> APIRouter:
         )
 
     @admin.post("/api/observability/evaluate")
-    async def evaluate():
+    async def evaluate() -> dict[str, Any]:
         try:
             return await pipeline.run()
         except ValueError as error:
@@ -157,7 +166,13 @@ def operations_router(settings, sessions, flywheel, pipeline) -> APIRouter:
 
 
 class ScheduledOperations:
-    def __init__(self, settings, sessions, flywheel, pipeline) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        sessions: async_sessionmaker[AsyncSession],
+        flywheel: Flywheel,
+        pipeline: EvaluationPipeline,
+    ) -> None:
         self.settings = settings
         self.sessions = sessions
         self.flywheel = flywheel
@@ -165,7 +180,7 @@ class ScheduledOperations:
         self.tasks: list[asyncio.Task[None]] = []
 
     def start(self) -> None:
-        jobs = (
+        jobs: tuple[tuple[str, int, Callable[[], Awaitable[object]]], ...] = (
             ("pawhelp-flywheel", self.settings.flywheel_interval_seconds, self.flywheel.process),
             (
                 "pawhelp-evaluation",
@@ -177,7 +192,9 @@ class ScheduledOperations:
             if interval:
                 self.tasks.append(asyncio.create_task(self._loop(name, interval, work)))
 
-    async def _loop(self, name: str, interval: int, work) -> None:
+    async def _loop(
+        self, name: str, interval: int, work: Callable[[], Awaitable[object]]
+    ) -> None:
         while True:
             await asyncio.sleep(interval)
             try:

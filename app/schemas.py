@@ -22,7 +22,7 @@ class ChatRequest(BaseModel):
 
     user_id: UUID
     conversation_id: PositiveInt | None = None
-    message: str
+    message: str = Field(min_length=1, max_length=8000)
 
     @field_validator("message")
     @classmethod
@@ -148,7 +148,13 @@ class AfterSalesExtraction(BaseModel):
 class ExtractionRequest(BaseModel):
     """One customer description to normalize into after-sales facts."""
 
-    description: str = Field(description="Customer-provided after-sales description.")
+    model_config = ConfigDict(extra="forbid")
+
+    description: str = Field(
+        min_length=1,
+        max_length=4000,
+        description="Customer-provided after-sales description.",
+    )
 
     @field_validator("description")
     @classmethod

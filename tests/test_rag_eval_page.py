@@ -4,8 +4,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.api.evaluation import RAG_EVAL_REPORT_PATH
+from app.api.pages import RAG_EVAL_PAGE_PATH
 from app.config import Settings
-from app.main import RAG_EVAL_PAGE_PATH, create_app
+from app.main import create_app
 from tests.fakes import FakeChatModel
 
 DATABASE_URL = "mysql+asyncmy://pawhelp:pawhelp@127.0.0.1:3306/pawhelp"

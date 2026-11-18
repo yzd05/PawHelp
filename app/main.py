@@ -13,6 +13,8 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from starlette.datastructures import MutableHeaders
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.api import create_api_router
 from app.api.evaluation import (
@@ -23,12 +25,7 @@ from app.api.evaluation import (
     evaluation_router,
 )
 from app.api.operations import ScheduledOperations, operations_router
-from app.api.pages import (
-    CHAT_PAGE_PATH,
-    KNOWLEDGE_PAGE_PATH,
-    RAG_EVAL_PAGE_PATH,
-    page_router,
-)
+from app.api.pages import CHAT_PAGE_PATH, page_router
 from app.config import Settings, get_settings
 from app.database.session import create_async_engine_from_settings, create_session_factory
 from app.evaluation.pipeline import EvaluationPipeline
@@ -44,7 +41,7 @@ from app.knowledge.query_understanding import (
 from app.knowledge.reranking import BgeReranker
 from app.knowledge.search import HybridKnowledgeSearch
 from app.knowledge.vector_store import MilvusKnowledgeStore, milvus_call
-from app.llm import create_chat_model
+from app.llm import create_chat_model, create_fast_chat_model
 from app.services.knowledge_admin import KnowledgeAdminService
 from app.services.tool_chat import ToolAwareChatService
 from app.topics.api import topic_router
@@ -52,8 +49,42 @@ from app.workflow.context_logging import configure_context_logging
 from app.workflow.graph import WorkflowChatService
 
 KNOWLEDGE_DOCUMENTS_PATH = PROJECT_ROOT / "knowledge"
+STRICT_CSP = (
+    "default-src 'self'; script-src 'self'; style-src 'self'; "
+    "img-src 'self' data:; font-src 'self'; connect-src 'self'; "
+    "object-src 'none'; base-uri 'self'; form-action 'self'; "
+    "frame-ancestors 'none'"
+)
+_CSP_EXEMPT_PATHS = frozenset({"/docs", "/redoc", "/openapi.json"})
 
 logger = logging.getLogger(__name__)
+
+
+class _SecurityHeadersMiddleware:
+    """Attach HTTP security headers while exempting OpenAPI docs from strict CSP."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        path = str(scope.get("path") or "")
+        exempt_csp = path in _CSP_EXEMPT_PATHS or path.startswith(("/docs/", "/redoc/"))
+
+        async def send_with_security_headers(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                headers = MutableHeaders(scope=message)
+                if not exempt_csp:
+                    headers.setdefault("Content-Security-Policy", STRICT_CSP)
+                headers.setdefault("X-Content-Type-Options", "nosniff")
+                headers.setdefault("X-Frame-Options", "DENY")
+                headers.setdefault("Referrer-Policy", "same-origin")
+            await send(message)
+
+        await self.app(scope, receive, send_with_security_headers)
 
 
 async def warm_knowledge_models(embedder: BgeM3Embedder, reranker: BgeReranker) -> None:
@@ -123,6 +154,8 @@ def create_app(
     rag_eval_runner: RagEvalRunner | None = None,
     preload_models: bool = False,
     runtime_root: Path | None = None,
+    *,
+    fast_model: object | None = None,
 ) -> FastAPI:
     """Create an initialized API application and its runtime dependencies.
 
@@ -131,6 +164,11 @@ def create_app(
 
     active_settings = settings or get_settings()
     active_model = model or create_chat_model(active_settings)
+    active_fast_model = (
+        fast_model
+        if fast_model is not None
+        else (model if model is not None else create_fast_chat_model(active_settings))
+    )
     owned_engine = None
     if session_factory is None:
         owned_engine = create_async_engine_from_settings(active_settings)
@@ -153,7 +191,7 @@ def create_app(
         passage_max_length=active_settings.reranker_passage_max_length,
     )
     query_planner = QueryUnderstandingService(
-        active_model,  # type: ignore[arg-type]
+        active_fast_model,  # type: ignore[arg-type]
         method=active_settings.structured_output_method,
     )
     knowledge_search = HybridKnowledgeSearch(
@@ -172,6 +210,7 @@ def create_app(
         model=active_model,  # type: ignore[arg-type]
         session_factory=active_session_factory,
         knowledge_search=knowledge_search,
+        fast_model=active_fast_model,
     )
     # Write-time checks compare the entry as written: no model rewrite of the query.
     consistency_search = HybridKnowledgeSearch(
@@ -193,14 +232,14 @@ def create_app(
         documents_root=KNOWLEDGE_DOCUMENTS_PATH,
         vectorize_batch_size=active_settings.vectorize_batch_size,
         conversation_extractor=ConversationKnowledgeExtractor(
-            active_model,  # type: ignore[arg-type]
+            active_fast_model,  # type: ignore[arg-type]
             method=active_settings.structured_output_method,
         ),
         conversation_batch_size=active_settings.conversation_mining_batch_size,
         calibration_path=Path(active_settings.evidence_calibration_path),
         consistency_checker=KnowledgeConsistencyChecker(
             consistency_search,
-            active_model,
+            active_fast_model,
             method=active_settings.structured_output_method,
         ),
     )
@@ -307,12 +346,14 @@ def create_app(
             if owned_engine is not None:
                 await owned_engine.dispose()
 
-    application = FastAPI(title="PawHelp", version="1.0.0", lifespan=lifespan)
+    application = FastAPI(title="PawHelp", version="1.1.0", lifespan=lifespan)
+    application.add_middleware(_SecurityHeadersMiddleware)
     application.mount(
         "/static", StaticFiles(directory=CHAT_PAGE_PATH.parent), name="static"
     )
     application.state.settings = active_settings
     application.state.model = active_model
+    application.state.fast_model = active_fast_model
     application.state.engine = owned_engine
     application.state.session_factory = active_session_factory
     application.state.embedder = embedder
@@ -351,6 +392,7 @@ def create_app(
             rag_eval_lock,
             active_rag_eval_runner,
             settings=active_settings,
+            runtime_root=runtime_root,
         )
     )
 
@@ -385,7 +427,7 @@ class LazyASGIApp:
                     self._instance = self._factory()
         return self._instance
 
-    async def __call__(self, scope, receive, send) -> None:
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         target = self._resolve()
         await target(scope, receive, send)
 

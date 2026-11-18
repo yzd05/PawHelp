@@ -7,11 +7,12 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
+from app.api.pages import KNOWLEDGE_PAGE_PATH
 from app.config import Settings
 from app.database.models import KnowledgeChunk
 from app.knowledge.chunking import KnowledgeDraft
 from app.knowledge.consistency import KnowledgeConsistencyChecker
-from app.main import KNOWLEDGE_PAGE_PATH, create_app
+from app.main import create_app
 from app.repositories.knowledge import KnowledgeRepository
 from app.repositories.knowledge_mining import KnowledgeCandidate, KnowledgeMiningRepository, Transcript
 from app.schemas import (

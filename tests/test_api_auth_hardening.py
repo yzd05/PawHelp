@@ -1,7 +1,7 @@
 """Comprehensive regression suite for API authorization, citation sanitization, UTF-8 bounds, and web hardening."""
 
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -13,19 +13,21 @@ from httpx import ASGITransport, AsyncClient
 from pydantic import SecretStr, ValidationError
 
 import app.api.evaluation as evaluation_module
-import app.evaluation.runtime as evaluation_runtime
-from app.config import Settings
-from app.database.models import Conversation, Message, RefundRequest
-from app.main import (
+from app.api.pages import (
     CHAT_PAGE_PATH,
     KNOWLEDGE_PAGE_PATH,
     RAG_EVAL_PAGE_PATH,
-    create_app,
 )
+import app.evaluation.runtime as evaluation_runtime
+from app.config import Settings
+from app.database.models import Conversation, Message, RefundRequest
+from app.main import STRICT_CSP, create_app
 from app.repositories.orders import OrderRepository
 from app.repositories.refunds import RefundRequestConflict, RefundRequestRepository
 from app.repositories.tickets import TicketRepository
 from app.schemas import (
+    ChatRequest,
+    ExtractionRequest,
     KnowledgeChunkView,
     ManualKnowledgeRequest,
     ReviewRequest,
@@ -189,6 +191,10 @@ PROTECTED_ADMIN_ENDPOINTS = [
     ),
     ("POST", "/v1/rag-eval/run", {"confirm_external_model_usage": True}),
     ("POST", "/v1/after-sales/extract", {"description": "买错了想退货"}),
+    ("GET", "/api/topics/distribution", None),
+    ("GET", "/api/topics/questions?label=退换货", None),
+    ("GET", "/api/acceptance/reports", None),
+    ("GET", "/api/acceptance/service", None),
 ]
 
 
@@ -208,6 +214,8 @@ async def test_all_admin_and_paid_endpoints_enforce_unified_authorization(monkey
         lambda payload, path: {"status": "current", "changed_cases": 0},
     )
 
+    # Ensure raw environment variable ADMIN_TOKEN cannot bypass explicit Settings(admin_token="").
+    monkeypatch.setenv("ADMIN_TOKEN", "env-bypass-secret")
     settings = _make_settings(admin_token="")
     model = FakeCombinedModel(
         structured_result={
@@ -661,3 +669,195 @@ def test_all_three_pages_have_no_inline_scripts_or_styles() -> None:
         for line in html.splitlines():
             if "<script" in line:
                 assert "src=" in line, f"{path.name} still has inline <script>: {line}"
+
+
+def test_chat_and_extraction_requests_enforce_length_caps_and_extra_forbid() -> None:
+    uid = uuid4()
+    valid_chat = ChatRequest(user_id=uid, message="喵" * 8000)
+    assert len(valid_chat.message) == 8000
+
+    with pytest.raises(ValidationError):
+        ChatRequest(user_id=uid, message="")
+    with pytest.raises(ValidationError):
+        ChatRequest(user_id=uid, message="   ")
+    with pytest.raises(ValidationError):
+        ChatRequest(user_id=uid, message="a" * 8001)
+
+    valid_extract = ExtractionRequest(description="退" * 4000)
+    assert len(valid_extract.description) == 4000
+
+    with pytest.raises(ValidationError):
+        ExtractionRequest(description="")
+    with pytest.raises(ValidationError):
+        ExtractionRequest(description="   ")
+    with pytest.raises(ValidationError):
+        ExtractionRequest(description="a" * 4001)
+    with pytest.raises(ValidationError):
+        ExtractionRequest.model_validate({"description": "申请退款", "unexpected": True})
+
+    app = create_app(
+        settings=_make_settings(),
+        model=FakeCombinedModel(),
+        tool_chat_service=object(),  # type: ignore[arg-type]
+    )
+    with TestClient(
+        app,
+        base_url="http://localhost:8000",
+        client=("127.0.0.1", 50000),
+        headers=LOCAL_HEADERS,
+    ) as client:
+        oversize_chat = client.post(
+            "/v1/chat/stream",
+            json={"user_id": str(uid), "message": "x" * 8001},
+        )
+        assert oversize_chat.status_code == 422
+        assert oversize_chat.headers["content-security-policy"] == STRICT_CSP
+
+        oversize_extract = client.post(
+            "/v1/after-sales/extract",
+            json={"description": "x" * 4001},
+        )
+        assert oversize_extract.status_code == 422
+
+        extra_extract = client.post(
+            "/v1/after-sales/extract",
+            json={"description": "退货", "extra_field": "rejected"},
+        )
+        assert extra_extract.status_code == 422
+
+
+def test_rag_eval_report_falls_back_to_readonly_baseline_snapshot(tmp_path: Path) -> None:
+    class _EmptyFaithSession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def execute(self, statement):
+            return SimpleNamespace(scalars=lambda: SimpleNamespace(all=list))
+
+    app = create_app(
+        settings=_make_settings(),
+        model=FakeCombinedModel(),
+        session_factory=_EmptyFaithSession,  # type: ignore[arg-type]
+        runtime_root=tmp_path,
+    )
+
+    with TestClient(
+        app,
+        base_url="http://localhost:8000",
+        client=("127.0.0.1", 50000),
+        headers=LOCAL_HEADERS,
+    ) as client:
+        # 1. Neither live report nor baseline exists -> 404.
+        missing = client.get("/v1/rag-eval/report")
+        assert missing.status_code == 404
+        assert missing.json() == {"detail": {"code": "rag_eval_report_not_found"}}
+
+        # 2. Only baseline snapshot exists (fresh git clone) -> 200 with is_baseline_snapshot=True.
+        reports_dir = tmp_path / "reports"
+        reports_dir.mkdir(parents=True, exist_ok=True)
+        baseline_payload = {
+            "dataset": {"total_cases": 500, "answerable_cases": 410, "refusal_cases": 90},
+            "strategies": {"hybrid_rerank": {"mrr": 0.9}},
+            "cases": [
+                {
+                    "case_id": "A01",
+                    "strategy": "hybrid_rerank",
+                    "faithful": False,
+                    "answer": "基线快照回答",
+                    "faithfulness_reason": "测试复核项",
+                }
+            ],
+        }
+        (reports_dir / "retrieval-evaluation.baseline.json").write_text(
+            json.dumps(baseline_payload, ensure_ascii=False), encoding="utf-8"
+        )
+
+        baseline_resp = client.get("/v1/rag-eval/report")
+        assert baseline_resp.status_code == 200
+        baseline_body = baseline_resp.json()
+        assert baseline_body["is_baseline_snapshot"] is True
+        assert baseline_body["strategies"]["hybrid_rerank"]["mrr"] == 0.9
+        assert "dataset_alignment" in baseline_body
+
+        faith_resp = client.get("/v1/rag-eval/faith-cases")
+        assert faith_resp.status_code == 200
+        assert "A01" in faith_resp.json()["cases"]
+
+        # 3. Live retrieval-evaluation.json takes precedence over baseline without snapshot flag.
+        live_payload = {
+            "dataset": {"total_cases": 500},
+            "strategies": {"hybrid_rerank": {"mrr": 0.92}},
+            "cases": [],
+        }
+        (reports_dir / "retrieval-evaluation.json").write_text(
+            json.dumps(live_payload, ensure_ascii=False), encoding="utf-8"
+        )
+        live_resp = client.get("/v1/rag-eval/report")
+        assert live_resp.status_code == 200
+        live_body = live_resp.json()
+        assert "is_baseline_snapshot" not in live_body
+        assert live_body["strategies"]["hybrid_rerank"]["mrr"] == 0.92
+
+
+def test_create_app_binds_fast_model_and_preserves_explicit_model_fallback(
+    monkeypatch,
+) -> None:
+    import app.main as main_module
+
+    primary = FakeCombinedModel()
+    fast = FakeCombinedModel()
+    fast_calls = 0
+    seen_models: dict[str, list[object]] = {
+        "planner": [],
+        "extractor": [],
+        "consistency": [],
+    }
+    real_planner = main_module.QueryUnderstandingService
+    real_extractor = main_module.ConversationKnowledgeExtractor
+    real_consistency = main_module.KnowledgeConsistencyChecker
+
+    def fake_create_chat_model(settings, **kwargs):
+        return primary
+
+    def fake_create_fast_chat_model(settings, **kwargs):
+        nonlocal fast_calls
+        fast_calls += 1
+        return fast
+
+    def spy_planner(model, *args, **kwargs):
+        seen_models["planner"].append(model)
+        return real_planner(model, *args, **kwargs)
+
+    def spy_extractor(model, *args, **kwargs):
+        seen_models["extractor"].append(model)
+        return real_extractor(model, *args, **kwargs)
+
+    def spy_consistency(search, model, *args, **kwargs):
+        seen_models["consistency"].append(model)
+        return real_consistency(search, model, *args, **kwargs)
+
+    monkeypatch.setattr(main_module, "create_chat_model", fake_create_chat_model)
+    monkeypatch.setattr(main_module, "create_fast_chat_model", fake_create_fast_chat_model)
+    monkeypatch.setattr(main_module, "QueryUnderstandingService", spy_planner)
+    monkeypatch.setattr(main_module, "ConversationKnowledgeExtractor", spy_extractor)
+    monkeypatch.setattr(main_module, "KnowledgeConsistencyChecker", spy_consistency)
+
+    default_app = create_app(settings=_make_settings())
+    assert fast_calls == 1
+    assert default_app.state.model is primary
+    assert default_app.state.fast_model is fast
+    assert seen_models["planner"] == [fast]
+    assert seen_models["extractor"] == [fast]
+    assert seen_models["consistency"] == [fast]
+
+    explicit = FakeCombinedModel()
+    injected_app = create_app(settings=_make_settings(), model=explicit)
+    assert fast_calls == 1
+    assert injected_app.state.model is explicit
+    assert injected_app.state.fast_model is explicit
+    assert seen_models["planner"][-1] is explicit
+    assert seen_models["extractor"][-1] is explicit
+    assert seen_models["consistency"][-1] is explicit

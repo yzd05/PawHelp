@@ -4,7 +4,7 @@ from collections.abc import AsyncGenerator
 from datetime import timezone
 import json
 from random import Random
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Response
@@ -373,7 +373,7 @@ def chat_router(
     async def pending_ticket(
         conversation_id: PositiveInt,
         user_id: Annotated[UUID, Header(alias="X-Demo-User-Id")],
-    ):
+    ) -> dict[str, Any]:
         try:
             async with session_factory() as session:
                 await ConversationRepository(session).get_owned(
@@ -391,7 +391,7 @@ def chat_router(
     @router.post("/v1/conversations/{conversation_id}/confirm-ticket")
     async def confirm_ticket(
         conversation_id: PositiveInt, request: TicketConfirmationRequest
-    ):
+    ) -> StreamingResponse:
         try:
             async with session_factory() as session:
                 await ConversationRepository(session).get_owned(
@@ -415,7 +415,7 @@ def chat_router(
                 status_code=409, detail={"code": "ticket_confirmation_not_pending"}
             )
 
-        async def event_bytes():
+        async def event_bytes() -> AsyncGenerator[bytes, None]:
             try:
                 async for event in tool_chat_service.resume_ticket(
                     str(request.user_id),
