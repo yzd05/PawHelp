@@ -707,10 +707,11 @@
     activeTicketPreview = null;
     messages.replaceChildren();
     addDayLabel();
-    addMessage(
+    const welcome = addMessage(
       "assistant",
       "你好呀，我是 PawHelp 客服小喵 🐾\n订单物流追踪、智能宠物设备排障、退换货或发票咨询都可以交给我，点下方快捷贴纸即可一键提问：",
     );
+    welcome.row.id = "welcomeGreeting";
     addSuggestions();
     scrollToLatest();
   }
@@ -1217,6 +1218,8 @@
       return;
     }
 
+    const welcomeGreeting = document.querySelector("#welcomeGreeting");
+    if (welcomeGreeting) welcomeGreeting.remove();
     const suggestions = document.querySelector("#suggestions");
     if (suggestions) suggestions.remove();
 

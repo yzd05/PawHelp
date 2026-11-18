@@ -342,7 +342,7 @@ textarea { min-height: 104px; resize: vertical; }
 /* Sticky-header data tables */
 .table-wrap {
   width: 100%;
-  max-block-size: 360px;
+  max-block-size: 374px;
   overflow: auto;
   container-type: inline-size;
 }
