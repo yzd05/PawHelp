@@ -1,4 +1,4 @@
-# ADR 0002：确定性前置路由外骨骼与两阶段 LangGraph 图中断确认机制
+# ADR 0002：确定性工作流前置路由与两阶段 LangGraph 图中断确认机制
 
 - **状态**：已采纳（Accepted）
 - **日期**：2026-10-22（2026-11-17 增补快慢模型超时分层与无状态扩容路径）
@@ -18,7 +18,7 @@
 
 ## Decision（核心决策）
 
-### 1. 确定性前置路由外骨骼 + 下线 Agent 侧 `query_faq`
+### 1. 确定性工作流前置路由 + 下线 Agent 侧 `query_faq`
 
 - **固定前置理解与路由**：由 `StateGraph(WorkflowState)` 编排 `resolve_reference → classify_intent → route`
   （`app/workflow/graph.py:414-454`）。路由仅依据结构化 `IntentDecision` 与确定性 `plan_route`
@@ -61,7 +61,7 @@
 当前单机使用 `AsyncSqliteSaver`、进程内 `WeakValueDictionary` 会话锁以及保护 `BgeM3Embedder` / `BgeReranker`
 的 `threading.Lock()`，无需额外中间件即可在宿主机直通单卡 GPU 跑通闭环。演进至 100+ QPS 多副本部署时：
 
-1. **共享存储 Checkpointer**：通过现有的 `WorkflowChatService.set_checkpointer()` 注入缝
+1. **共享存储 Checkpointer**：通过现有的 `WorkflowChatService.set_checkpointer()` 注入接口
    （`app/workflow/graph.py:406`），零业务代码改动切换至 `AsyncPostgresSaver` 或 Redis Checkpointer，
    彻底消除多进程 `SQLITE_BUSY` 与跨节点中断恢复丢失。
 2. **本地嵌入/重排模型服务化**：将约 `3.3 GB` 的 BGE-M3 与 Reranker 抽离至独立 HuggingFace TEI / Infinity

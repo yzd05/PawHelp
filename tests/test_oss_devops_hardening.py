@@ -481,7 +481,10 @@ def test_adrs_baseline_snapshots_readme_and_scoring_fingerprint_intact() -> None
     assert "[![Release: v0.1.0](https://img.shields.io/badge/release-v0.1.0-blue.svg)](CHANGELOG.md)" in readme
     assert "English Overview" in readme
     assert "docs/images/interrupt-flow.png" in readme
-    assert "Hold-out Only" in readme
+    evals_readme = (ROOT / "evals" / "README.md").read_text(encoding="utf-8")
+    assert "Hold-out Only" in evals_readme
+    for banned_jargon in ("外骨骼", "2PC", "毒丸", "墓碑"):
+        assert banned_jargon not in readme
     changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     release_headings = [line for line in changelog.splitlines() if line.startswith("## ")]
     assert release_headings == ["## 0.1.0 — 2026-11-17"]

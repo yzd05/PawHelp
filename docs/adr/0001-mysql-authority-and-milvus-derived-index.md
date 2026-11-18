@@ -1,7 +1,7 @@
-# ADR 0001：以 MySQL 为唯一真相源、Milvus 2.6 为双路派生索引的四态最终一致架构
+# ADR 0001：以 MySQL 为唯一真相源、Milvus 2.6 为派生索引的最终一致同步设计
 
 - **状态**：已采纳（Accepted）
-- **日期**：2026-10-22（2026-11-17 增补墓碑态与毒丸单条隔离）
+- **日期**：2026-10-22（2026-11-17 增补删除过渡态与异常数据单条隔离）
 - **关联模块**：`app/database/models.py`、`app/repositories/knowledge.py`、`app/knowledge/vector_store.py`、`app/knowledge/vectorization.py`、`app/services/knowledge_admin.py`、`app/knowledge/search.py`
 
 ## Context（背景与问题）
@@ -13,7 +13,7 @@
 2. **关系型治理与事务关联**：知识块（`knowledge_chunks`）需要承载来源分类
    （`markdown / manual / flywheel / mined`）、同章节邻接链表（`prev_chunk_id / next_chunk_id`）
    及写入冲突审计记录，并与会话、审核队列共享 MySQL 事务边界。
-3. **跨存储无分布式事务（No 2PC）**：MySQL 8.4 与 Milvus 2.6 之间不存在两阶段提交。
+3. **跨库无分布式事务下的状态同步**：MySQL 8.4 与 Milvus 2.6 之间不存在跨库分布式事务。
    若批量向量化中途超时、单条超长 UTF-8 坏块报错，或删除中途进程崩溃，极易引发
    “检索搜出已删幽灵向量”或“单条脏数据卡死整批同步”的一致性事故。
 
@@ -29,27 +29,27 @@
   `RRFRanker` 融合后，回表 MySQL 时仅水合 `vectorize_status == "done"` 的有效行
   （`app/repositories/knowledge.py`）。即使极端崩溃在 Milvus 残留孤儿向量，在线问答也绝不泄露。
 
-### 2. 无 2PC 下的 `pending / done / failed / deleting` 四态状态机
+### 2. 跨库无分布式事务下的状态同步（`pending / done / failed / deleting`）
 
 | 状态 | 语义与检索可见性 | 进入条件与恢复动作 |
 |---|---|---|
 | `pending` | 已落盘待建索引；检索不可见 | 新增、编辑或对账发现缺向量时写入；由 `vectorize_pending` 消费 |
 | `done` | 双库对齐就绪；检索可见 | Milvus `upsert` 成功后提交，记录稳定 `vector_id = str(id)` |
-| `failed` | 毒丸坏块隔离；检索不可见 | 单条超长/数据格式异常时自动降级隔离，不阻塞同批其余正常块 |
-| `deleting` | 瞬态删除墓碑；立即隐身 | 删除或文档重建时先落墓碑，待 Milvus 删完向量后再物理删行 |
+| `failed` | 异常数据单条隔离；检索不可见 | 单条超长/数据格式异常时自动降级隔离，不阻塞同批其余正常块 |
+| `deleting` | 删除过渡标记；立即隐身 | 删除或文档重建时先标记删除中，待 Milvus 删完向量后再物理删行 |
 
-- **先墓碑后物理删除**：`delete_chunk` 与 `sync_materials`（`app/services/knowledge_admin.py:574-635`）
+- **先标删除中再物理删行**：`delete_chunk` 与 `sync_materials`（`app/services/knowledge_admin.py:574-635`）
   先在 MySQL 提交 `deleting` 状态（立即从检索水合与 `/kb` 有效计数视图隐身），再执行 Milvus 删除，
   最后物理移除 MySQL 行，彻底消除“MySQL 已删而 Milvus 仍可搜出”的窗口。
 
-### 3. 批内毒丸隔离与双向孤儿对账
+### 3. 批内异常数据单条隔离与双向孤儿对账
 
-- **毒丸单条降级隔离（Poison-Pill Isolation）**：`vectorize_pending`（`app/knowledge/vectorization.py:112-195`）
+- **异常数据单条隔离**：`vectorize_pending`（`app/knowledge/vectorization.py:112-195`）
   遇到非瞬态数据错误（如超过 `MAX_TEXT_BYTES = 65535` UTF-8 字节上限）时，自动从批处理降级为逐条重试，
   仅将坏块标为 `failed` 并正常提交同批好块。
 - **双向对账（Reconciliation）**：使用 `count(*)`（`consistency_level="Strong"`，规避 Compaction 前统计滞后）
   与 `list_all_ids` 双向核对：MySQL `done` 但 Milvus 缺失的行自动回退 `pending`；Milvus 孤儿向量与残留
-  `deleting` 墓碑在对账时自动清理（`app/services/knowledge_admin.py:71-85`）。
+  `deleting` 过渡记录在对账时自动清理（`app/services/knowledge_admin.py:71-85`）。
 
 ## Trade-offs & Rejected Alternatives（权衡与被否决方案）
 
