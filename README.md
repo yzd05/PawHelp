@@ -4,6 +4,7 @@
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Release: v0.1.0](https://img.shields.io/badge/release-v0.1.0-blue.svg)](CHANGELOG.md)
+[![M8ven Score](https://m8ven.ai/badge/mcp/yzd05-pawhelp-e9nxnf?variant=verified)](https://m8ven.ai/mcp/yzd05-pawhelp-e9nxnf?s=readme)
 
 <details>
 <summary><b>English Overview (Click to expand)</b></summary>
